@@ -6,7 +6,8 @@ Die Oberfläche öffnest du über den Eintrag **Stichtag** in der Seitenleiste.
 
 - **Heute**: fällige Dosen, Eintragen, nächste Injektionsstelle laut Rotation
 - **Protokolle**: Peptid, Dosis, Rhythmus, Startdatum, Uhrzeit, Zykluslänge
-- **Verlauf**: alle Einträge, filterbar nach Peptid
+- **Verlauf**: alle Einträge, filterbar nach Peptid, mit Bearbeiten
+- **Auswertung**: Einhaltung über 8 Wochen, Zahlen je Peptid, Befinden, Stellen
 - **Körper**: Gewicht, Bauchumfang, Körperfett mit Verlaufskurve
 - **Vials & Rechner**: Vorrat pro Vial und Misch-Rechner für U-100-Spritzen
 - **Daten**: Erinnerungen, Handy-App, Injektionsstellen, Export, Import
@@ -18,6 +19,11 @@ Die Oberfläche öffnest du über den Eintrag **Stichtag** in der Seitenleiste.
 3. Jedem Protokoll, das erinnern soll, eine Uhrzeit geben.
 
 Erinnert wird zur Uhrzeit des Protokolls, solange die Dosis an dem Tag noch nicht eingetragen ist. Optional kommt nach einer einstellbaren Zahl von Minuten eine zweite Erinnerung. Protokolle ohne Uhrzeit erinnern nicht.
+
+Läuft die Erinnerung über die Home-Assistant-App (`notify.mobile_app_…`), hat sie den Knopf **Erledigt**. Ein Tipp
+darauf trägt die Dosis mit den Vorgaben des Protokolls und der nächsten Stelle der Rotation ein.
+
+Fällt ein Vial unter 20 % Rest, kommt einmal eine Warnung. Das lässt sich unter **Daten → Erinnerungen** abschalten.
 
 ## Handy-App
 

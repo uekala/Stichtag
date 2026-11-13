@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../core/app_store.dart';
 import '../core/logic.dart';
+import 'editors.dart';
+import 'stats_view.dart';
 import 'widgets.dart';
 
 class HistoryPage extends StatefulWidget {
@@ -14,6 +16,7 @@ class HistoryPage extends StatefulWidget {
 }
 
 class _HistoryPageState extends State<HistoryPage> {
+  String _view = 'entries';
   String _filter = '';
 
   Future<void> _delete(String id) async {
@@ -24,8 +27,7 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  List<Widget> _entries(BuildContext context) {
     final theme = Theme.of(context);
     final all = items(widget.store.state, 'logs');
     final names = all.map((log) => str(log['name'])).toSet().toList()..sort();
@@ -35,14 +37,17 @@ class _HistoryPageState extends State<HistoryPage> {
           ..sort((a, b) => str(b['ts']).compareTo(str(a['ts'])));
 
     final children = <Widget>[
-      dropdown<String>(
-        label: 'Filter',
-        value: _filter,
-        options: <String, String>{
-          '': 'Alle Peptide',
-          for (final name in names) name: name,
-        },
-        onChanged: (value) => setState(() => _filter = value),
+      KeyedSubtree(
+        key: ValueKey<String>('filter-${names.join('|')}'),
+        child: dropdown<String>(
+          label: 'Filter',
+          value: _filter,
+          options: <String, String>{
+            '': 'Alle Peptide',
+            for (final name in names) name: name,
+          },
+          onChanged: (value) => setState(() => _filter = value),
+        ),
       ),
       const SizedBox(height: 12),
       if (logs.isEmpty) const InfoCard('Noch keine Einträge.'),
@@ -77,6 +82,10 @@ class _HistoryPageState extends State<HistoryPage> {
               '${str(log['name'])}  ${fmtNum(toDouble(log['dose']), 3)} ${str(log['unit'])}',
             ),
             subtitle: details.isEmpty ? null : Text(details),
+            onTap: () => openPage(
+              context,
+              LogEditor(store: widget.store, existing: log),
+            ),
             trailing: IconButton(
               tooltip: 'Eintrag löschen',
               onPressed: () => _delete(str(log['id'])),
@@ -86,10 +95,31 @@ class _HistoryPageState extends State<HistoryPage> {
         ),
       );
     }
-    return ListView(
-      key: ValueKey<String>('history-${names.join('|')}'),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-      children: children,
-    );
+    return children;
   }
+
+  @override
+  Widget build(BuildContext context) => RefreshIndicator(
+    onRefresh: widget.store.refresh,
+    child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      children: [
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment<String>(value: 'entries', label: Text('Einträge')),
+            ButtonSegment<String>(value: 'stats', label: Text('Auswertung')),
+          ],
+          selected: <String>{_view},
+          onSelectionChanged: (selection) =>
+              setState(() => _view = selection.first),
+        ),
+        const SizedBox(height: 16),
+        if (_view == 'stats')
+          StatsView(state: widget.store.state)
+        else
+          ..._entries(context),
+      ],
+    ),
+  );
 }

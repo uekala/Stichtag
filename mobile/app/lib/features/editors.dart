@@ -18,12 +18,14 @@ String _numText(Object? value) {
   return number > 0 ? fmtNum(number, 3) : '';
 }
 
-/// Eine Dosis eintragen, optional vorbelegt aus einem Protokoll.
+/// Eine Dosis eintragen (optional vorbelegt aus einem Protokoll) oder einen
+/// vorhandenen Eintrag bearbeiten.
 class LogEditor extends StatefulWidget {
-  const LogEditor({super.key, required this.store, this.protocol});
+  const LogEditor({super.key, required this.store, this.protocol, this.existing});
 
   final AppStore store;
   final Json? protocol;
+  final Json? existing;
 
   @override
   State<LogEditor> createState() => _LogEditorState();
@@ -44,19 +46,26 @@ class _LogEditorState extends State<LogEditor> {
   @override
   void initState() {
     super.initState();
-    final protocol = widget.protocol;
+    final log = widget.existing;
+    final source = log ?? widget.protocol;
     final state = widget.store.state;
-    _name = TextEditingController(text: str(protocol?['name']));
-    _dose = TextEditingController(text: _numText(protocol?['dose']));
-    final unit = str(protocol?['unit']);
+    _name = TextEditingController(text: str(source?['name']));
+    _dose = TextEditingController(text: _numText(source?['dose']));
+    final unit = str(source?['unit']);
     _unit = doseUnits.contains(unit) ? unit : 'mcg';
-    final suggested = nextSite(state);
-    _site = sitesOf(state).contains(suggested) ? suggested : '';
-    final vial = str(protocol?['vialId']);
+    _site = log == null ? nextSite(state) : str(log['site']);
+    final vial = str(source?['vialId']);
     _vial = _vialOptions(state).containsKey(vial) ? vial : '';
-    final stamp = nowStamp();
+    final saved = str(log?['ts']);
+    final stamp = saved.length >= 16 && tryParseYmd(saved) != null
+        ? saved
+        : nowStamp();
     _date = stamp.substring(0, 10);
-    _time = stamp.substring(11);
+    _time = stamp.substring(11, 16);
+    if (log != null) {
+      _feel = toInt(log['feel']).clamp(0, 5).toInt();
+      _note.text = str(log['note']);
+    }
   }
 
   @override
@@ -78,7 +87,7 @@ class _LogEditorState extends State<LogEditor> {
     }
     widget.store.change((state) {
       final protocols = items(state, 'protocols');
-      var pid = str(widget.protocol?['id']);
+      var pid = str(widget.existing?['pid'] ?? widget.protocol?['id']);
       final own = firstOrNull(protocols, (p) => p['id'] == pid);
       if (own == null || str(own['name']) != name) {
         final match = firstOrNull(
@@ -87,8 +96,7 @@ class _LogEditorState extends State<LogEditor> {
         );
         pid = match == null ? '' : str(match['id']);
       }
-      items(state, 'logs').add(<String, dynamic>{
-        'id': newId(),
+      final data = <String, dynamic>{
         'ts': '${_date}T$_time',
         'pid': pid,
         'name': name,
@@ -98,7 +106,15 @@ class _LogEditorState extends State<LogEditor> {
         'feel': _feel,
         'note': _note.text.trim(),
         'vialId': _vial,
-      });
+      };
+      final logs = items(state, 'logs');
+      final id = str(widget.existing?['id']);
+      final current = firstOrNull(logs, (log) => log['id'] == id);
+      if (current != null) {
+        current.addAll(data);
+      } else {
+        logs.add(<String, dynamic>{'id': newId(), ...data});
+      }
     });
     Navigator.of(context).pop();
   }
@@ -107,7 +123,7 @@ class _LogEditorState extends State<LogEditor> {
   Widget build(BuildContext context) {
     final state = widget.store.state;
     return EditorScaffold(
-      title: 'Dosis eintragen',
+      title: widget.existing == null ? 'Dosis eintragen' : 'Eintrag bearbeiten',
       onSave: _save,
       error: _error,
       children: [
@@ -157,6 +173,8 @@ class _LogEditorState extends State<LogEditor> {
           options: <String, String>{
             '': 'Keine Angabe',
             for (final site in sitesOf(state)) site: site,
+            if (_site.isNotEmpty && !sitesOf(state).contains(_site))
+              _site: _site,
           },
           onChanged: (v) => setState(() => _site = v),
         ),

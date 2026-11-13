@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Stichtag: Weboberfläche, Datenspeicher und Erinnerungen."""
+import base64
 import hashlib
 import hmac
 import ipaddress
 import json
 import os
 import secrets
+import socket
+import struct
 import threading
 import time
 import urllib.error
@@ -19,10 +22,12 @@ WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "www")
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 DEV = os.environ.get("DEV") == "1"
 DEV_MOBILE = os.environ.get("DEV_MOBILE") == "1"
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 PORT = int(os.environ.get("PORT", "8099"))
 MOBILE_PORT = int(os.environ.get("MOBILE_PORT", "8098"))
 PAIRING_TTL = 600
+ACTION_DONE = "STICHTAG_DONE_"
+LOW_VIAL = 0.2
 INGRESS_GATEWAY = "172.30.32.2"
 MAX_BODY = 5 * 1024 * 1024
 STATE_FILE = os.path.join(DATA_DIR, "state.json")
@@ -245,6 +250,54 @@ def next_site(state):
     return sorted(sites, key=lambda s: last.get(s, ""))[0] if sites else ""
 
 
+def vial_left(state, vial):
+    """Rest im Vial als (mcg, Anteil); None, wenn kein Inhalt eingetragen ist."""
+    try:
+        total = float(vial.get("mg") or 0) * 1000
+        used = 0.0
+        for log in state["logs"]:
+            if log.get("vialId") != vial.get("id"):
+                continue
+            if log.get("unit") == "mcg":
+                used += float(log.get("dose") or 0)
+            elif log.get("unit") == "mg":
+                used += float(log.get("dose") or 0) * 1000
+    except (TypeError, ValueError):
+        return None
+    if total <= 0:
+        return None
+    left = max(0.0, total - used)
+    return left, left / total
+
+
+def mark_done(pid, now=None):
+    """Trägt die heutige Dosis eines Protokolls ein, wie ein Tipp auf „Erledigt“."""
+    now = now or datetime.now()
+    day_s = now.date().isoformat()
+    with lock:
+        state = load_state()
+        protocol = next((p for p in state["protocols"] if str(p.get("id")) == pid), None)
+        if protocol is None:
+            return False
+        if any(l.get("pid") == pid and str(l.get("ts", ""))[:10] == day_s for l in state["logs"]):
+            return False
+        state["logs"].append({
+            "id": secrets.token_hex(6), "ts": now.strftime("%Y-%m-%dT%H:%M"), "pid": pid,
+            "name": protocol.get("name"), "dose": protocol.get("dose"), "unit": protocol.get("unit"),
+            "site": next_site(state), "feel": 0, "note": "", "vialId": protocol.get("vialId") or "",
+        })
+        state["rev"] = int(state.get("rev") or 0) + 1
+        write_json(STATE_FILE, state)
+        service = str(state["settings"].get("notify") or "")
+    if service.startswith("notify.mobile_app_"):
+        try:
+            supervisor("POST", "/core/api/services/notify/" + service.split(".", 1)[1],
+                       {"message": "clear_notification", "data": {"tag": "peptid-" + pid}})
+        except Exception:
+            pass
+    return True
+
+
 def fmt(n):
     try:
         return ("%.3f" % float(n)).rstrip("0").rstrip(".").replace(".", ",")
@@ -287,7 +340,7 @@ def notify_services():
     return sorted(names, key=lambda n: (not n.startswith("notify.mobile_app_"), n))
 
 
-def send(service, message, tag):
+def send(service, message, tag, actions=None):
     name = service.split(".", 1)[1] if "." in service else service
     if not name.replace("_", "").isalnum():
         raise ValueError("Ungültiger Dienstname")
@@ -298,6 +351,8 @@ def send(service, message, tag):
         if url:
             data["url"] = url
             data["clickAction"] = url
+        if actions:
+            data["actions"] = actions
         payload["data"] = data
     supervisor("POST", "/core/api/services/notify/" + name, payload)
 
@@ -317,7 +372,7 @@ def check_reminders(now=None, sender=send):
     except (TypeError, ValueError):
         followup = 0
     changed = False
-    for key in [k for k in notified if not k.startswith(day_s)]:
+    for key in [k for k in notified if not k.startswith(day_s) and not k.startswith("vial|")]:
         del notified[key]
         changed = True
     if service:
@@ -343,16 +398,162 @@ def check_reminders(now=None, sender=send):
             site = next_site(state)
             if site:
                 text += ". Nächste Stelle: " + site
+            pid = str(p.get("id"))
+            actions = [{"action": ACTION_DONE + pid, "title": "Erledigt"}] if pid.isalnum() else None
             try:
-                sender(service, text, "peptid-" + str(p.get("id")))
+                sender(service, text, "peptid-" + pid, actions)
             except Exception as e:  # nächster Durchlauf versucht es erneut
                 print("Erinnerung fehlgeschlagen:", e, flush=True)
                 continue
             notified[key] = {"count": (rec["count"] + 1) if rec else 1, "last": now.timestamp()}
             changed = True
+        # Vorrat: einmal warnen, sobald ein Vial unter 20 % fällt; nach dem Auffüllen wieder scharf.
+        warn = state["settings"].get("lowvial") is not False
+        for vial in state["vials"]:
+            key = "vial|" + str(vial.get("id"))
+            level = None if vial.get("demo") else vial_left(state, vial)
+            if not warn or level is None or level[1] >= LOW_VIAL:
+                if key in notified:
+                    del notified[key]
+                    changed = True
+                continue
+            if key in notified:
+                continue
+            if level[0] <= 0:
+                text = "Vial %s ist leer." % vial.get("name")
+            else:
+                text = "Vial %s ist fast leer: noch %s mg." % (vial.get("name"), fmt(level[0] / 1000))
+            try:
+                sender(service, text, "peptid-vial-" + str(vial.get("id")), None)
+            except Exception as e:
+                print("Vorratswarnung fehlgeschlagen:", e, flush=True)
+                continue
+            notified[key] = {"count": 1, "last": now.timestamp()}
+            changed = True
     if changed:
         with lock:
             write_json(NOTIFIED_FILE, notified)
+
+
+# ---------- „Erledigt“ aus der Benachrichtigung (WebSocket zu Home Assistant) ----------
+
+def _recv_exact(sock, count):
+    data = b""
+    while len(data) < count:
+        chunk = sock.recv(count - len(data))
+        if not chunk:
+            raise ConnectionError("Verbindung geschlossen")
+        data += chunk
+    return data
+
+
+def ws_connect(host, port, path):
+    sock = socket.create_connection((host, port), timeout=30)
+    key = base64.b64encode(os.urandom(16)).decode()
+    sock.sendall((
+        "GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+        "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n" % (path, host, key)
+    ).encode())
+    head = b""
+    while b"\r\n\r\n" not in head:
+        head += _recv_exact(sock, 1)
+        if len(head) > 8192:
+            raise ConnectionError("Antwort zu lang")
+    if b" 101 " not in head.split(b"\r\n", 1)[0]:
+        sock.close()
+        raise ConnectionError("Kein WebSocket: %r" % head.split(b"\r\n", 1)[0])
+    sock.settimeout(60)
+    return sock
+
+
+def ws_send(sock, payload, opcode=1):
+    data = payload.encode() if isinstance(payload, str) else payload
+    mask = os.urandom(4)
+    size = len(data)
+    if size < 126:
+        head = bytes([0x80 | opcode, 0x80 | size])
+    elif size < 65536:
+        head = bytes([0x80 | opcode, 0x80 | 126]) + struct.pack(">H", size)
+    else:
+        head = bytes([0x80 | opcode, 0x80 | 127]) + struct.pack(">Q", size)
+    sock.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+
+
+def ws_recv(sock):
+    """Nächste Textnachricht; "" wenn eine Minute nichts kam, None wenn die Gegenseite schließt."""
+    message = b""
+    while True:
+        try:
+            first, second = _recv_exact(sock, 2)
+        except socket.timeout:
+            if message:
+                raise
+            return ""
+        size = second & 0x7F
+        if size == 126:
+            size = struct.unpack(">H", _recv_exact(sock, 2))[0]
+        elif size == 127:
+            size = struct.unpack(">Q", _recv_exact(sock, 8))[0]
+        if size > 16 * 1024 * 1024:
+            raise ConnectionError("Nachricht zu groß")
+        mask = _recv_exact(sock, 4) if second & 0x80 else None
+        payload = _recv_exact(sock, size)
+        if mask:
+            payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        opcode = first & 0x0F
+        if opcode == 8:
+            return None
+        if opcode == 9:
+            ws_send(sock, payload, opcode=10)
+            continue
+        if opcode == 10:
+            continue
+        message += payload
+        if first & 0x80:
+            return message.decode("utf-8", "replace")
+
+
+def listen_actions(sock, token):
+    """Meldet sich bei Home Assistant an und wartet auf Tipps auf „Erledigt“."""
+    if json.loads(ws_recv(sock) or "{}").get("type") != "auth_required":
+        raise ConnectionError("Unerwartete Begrüßung")
+    ws_send(sock, json.dumps({"type": "auth", "access_token": token}))
+    if json.loads(ws_recv(sock) or "{}").get("type") != "auth_ok":
+        raise ConnectionError("Anmeldung abgelehnt")
+    ws_send(sock, json.dumps({"id": 1, "type": "subscribe_events",
+                              "event_type": "mobile_app_notification_action"}))
+    counter = 1
+    while True:
+        raw = ws_recv(sock)
+        if raw is None:
+            return
+        if raw == "":
+            counter += 1
+            ws_send(sock, json.dumps({"id": counter, "type": "ping"}))
+            continue
+        try:
+            msg = json.loads(raw)
+        except ValueError:
+            continue
+        if msg.get("type") != "event":
+            continue
+        action = str(((msg.get("event") or {}).get("data") or {}).get("action") or "")
+        if action.startswith(ACTION_DONE):
+            if mark_done(action[len(ACTION_DONE):]):
+                print("Dosis über die Benachrichtigung eingetragen", flush=True)
+
+
+def action_loop():
+    while True:
+        try:
+            sock = ws_connect("supervisor", 80, "/core/websocket")
+            try:
+                listen_actions(sock, TOKEN)
+            finally:
+                sock.close()
+        except Exception as e:
+            print("Verbindung zu Home Assistant für „Erledigt“ unterbrochen:", e, flush=True)
+        time.sleep(30)
 
 
 def reminder_loop():
@@ -586,6 +787,8 @@ class MobileHandler(BaseHandler):
 if __name__ == "__main__":
     os.makedirs(DATA_DIR, exist_ok=True)
     threading.Thread(target=reminder_loop, daemon=True).start()
+    if TOKEN:
+        threading.Thread(target=action_loop, daemon=True).start()
     mobile = ThreadingHTTPServer(("0.0.0.0", MOBILE_PORT), MobileHandler)
     threading.Thread(target=mobile.serve_forever, daemon=True).start()
     print("Handy-API auf Port %d" % MOBILE_PORT, flush=True)

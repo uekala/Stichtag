@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+
+- Heute: „Erledigt“ trägt die Dosis mit einem Klick ein, „Rückgängig“ nimmt sie zurück; dazu die nächsten 7 Tage, ein Fortschrittsring und Hinweise auf fast leere Vials
+- Neuer Reiter Auswertung: Einhaltung über 8 Wochen, Zahlen je Peptid, Befinden im Verlauf, Verteilung der Stellen
+- Einträge im Verlauf lassen sich bearbeiten
+- Erinnerungen: „Erledigt“ direkt in der Benachrichtigung der Home-Assistant-App, Warnung bei Vials unter 20 %
+- Eigenes Symbol für die App
+
 ## 1.1.1
 
 - Das Protokoll nennt die Adresse, wenn die Handy-API eine Anfrage ablehnt. Das hilft beim Einrichten von `trusted_proxies`.

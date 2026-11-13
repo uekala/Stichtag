@@ -6,6 +6,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../core/api.dart';
 import '../core/app_store.dart';
 import '../core/pairing_payload.dart';
+import 'app_logo.dart';
 
 /// Erster Bildschirm: das Handy mit dem eigenen Stichtag-Server koppeln.
 class PairingPage extends StatefulWidget {
@@ -68,7 +69,10 @@ class _PairingPageState extends State<PairingPage> {
           padding: const EdgeInsets.all(24),
           children: [
             const SizedBox(height: 24),
-            Icon(Icons.vaccines, size: 56, color: theme.colorScheme.primary),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: AppLogo(size: 64),
+            ),
             const SizedBox(height: 16),
             Text('Stichtag', style: theme.textTheme.headlineMedium),
             const SizedBox(height: 8),

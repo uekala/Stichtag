@@ -267,3 +267,159 @@ MixResult? calcMix({
     dosesPerVial: vialMg * 1000 / doseMcg,
   );
 }
+
+/// Fällige und eingetragene Dosen eines 7-Tage-Fensters.
+class WeekStat {
+  const WeekStat({required this.start, required this.due, required this.done});
+
+  final String start;
+  final int due;
+  final int done;
+
+  /// Anteil erledigter Dosen; null, wenn nichts fällig war.
+  double? get rate => due == 0 ? null : done / due;
+}
+
+/// Die letzten [weeks] Fenster zu je 7 Tagen, das letzte endet heute.
+List<WeekStat> weekStats(Json state, String today, [int weeks = 8]) {
+  final result = <WeekStat>[];
+  for (var week = weeks - 1; week >= 0; week--) {
+    var due = 0;
+    var done = 0;
+    for (var back = 6; back >= 0; back--) {
+      final day = adherence(state, addDays(today, -(week * 7 + back)));
+      due += day.due;
+      done += day.done;
+    }
+    result.add(
+      WeekStat(start: addDays(today, -(week * 7 + 6)), due: due, done: done),
+    );
+  }
+  return result;
+}
+
+class PeptideStat {
+  PeptideStat(this.name);
+
+  final String name;
+  int total = 0;
+
+  /// Einträge der letzten 30 Tage
+  int recent = 0;
+
+  /// Menge der letzten 30 Tage je Einheit
+  final Map<String, double> sums = <String, double>{};
+  String last = '';
+  String pid = '';
+
+  /// Fällige und erledigte Tage der letzten 30 Tage laut Protokoll
+  int due = 0;
+  int done = 0;
+}
+
+List<PeptideStat> peptideStats(Json state, String today) {
+  final from = addDays(today, -29);
+  final byName = <String, PeptideStat>{};
+  final logs = items(state, 'logs');
+  for (final log in logs) {
+    final name = str(log['name']);
+    final stamp = str(log['ts']);
+    final stat = byName.putIfAbsent(name, () => PeptideStat(name));
+    stat.total++;
+    if (stamp.compareTo(stat.last) > 0) stat.last = stamp;
+    final pid = str(log['pid']);
+    if (pid.isNotEmpty) stat.pid = pid;
+    if (stamp.length >= 10 && stamp.substring(0, 10).compareTo(from) >= 0) {
+      stat.recent++;
+      final unit = str(log['unit']);
+      stat.sums[unit] = (stat.sums[unit] ?? 0) + toDouble(log['dose']);
+    }
+  }
+  final protocols = items(state, 'protocols');
+  for (final stat in byName.values) {
+    final protocol = firstOrNull(protocols, (p) => p['id'] == stat.pid);
+    if (protocol == null) continue;
+    for (var back = 0; back < 30; back++) {
+      final day = addDays(today, -back);
+      if (!isDue(protocol, day)) continue;
+      stat.due++;
+      final logged = logs.any(
+        (log) => log['pid'] == stat.pid && str(log['ts']).startsWith(day),
+      );
+      if (logged) stat.done++;
+    }
+  }
+  return byName.values.toList()..sort((a, b) => b.last.compareTo(a.last));
+}
+
+/// Menge je Einheit als Text; ab 1000 mcg in mg.
+String amountLabel(Map<String, double> sums) => sums.entries
+    .map(
+      (entry) => entry.key == 'mcg' && entry.value >= 1000
+          ? '${fmtNum(entry.value / 1000)} mg'
+          : '${fmtNum(entry.value)} ${entry.key}',
+    )
+    .join(' + ');
+
+String entriesLabel(int count) => count == 1 ? '1 Eintrag' : '$count Einträge';
+
+/// Mittleres Befinden je Tag der letzten [days] Tage, nach Datum sortiert.
+List<MapEntry<String, double>> feelSeries(
+  Json state,
+  String today, [
+  int days = 60,
+]) {
+  final from = addDays(today, -(days - 1));
+  final byDay = <String, List<int>>{};
+  for (final log in items(state, 'logs')) {
+    final feel = toInt(log['feel']);
+    final stamp = str(log['ts']);
+    if (feel <= 0 || stamp.length < 10) continue;
+    final day = stamp.substring(0, 10);
+    if (day.compareTo(from) < 0) continue;
+    byDay.putIfAbsent(day, () => <int>[]).add(feel);
+  }
+  final sorted = byDay.keys.toList()..sort();
+  return [
+    for (final day in sorted)
+      MapEntry(day, byDay[day]!.reduce((a, b) => a + b) / byDay[day]!.length),
+  ];
+}
+
+/// Einträge je Stelle in den letzten [days] Tagen.
+Map<String, int> siteCounts(Json state, String today, [int days = 30]) {
+  final from = addDays(today, -(days - 1));
+  final counts = <String, int>{for (final site in sitesOf(state)) site: 0};
+  for (final log in items(state, 'logs')) {
+    final site = str(log['site']);
+    final stamp = str(log['ts']);
+    if (site.isEmpty || stamp.length < 10) continue;
+    if (stamp.substring(0, 10).compareTo(from) < 0) continue;
+    counts[site] = (counts[site] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/// Fällige Protokolle der nächsten [days] Tage, ohne heute und ohne leere Tage.
+List<MapEntry<String, List<Json>>> upcoming(
+  Json state,
+  String today, [
+  int days = 7,
+]) {
+  final result = <MapEntry<String, List<Json>>>[];
+  for (var ahead = 1; ahead <= days; ahead++) {
+    final day = addDays(today, ahead);
+    final due = items(
+      state,
+      'protocols',
+    ).where((p) => isDue(p, day)).toList();
+    if (due.isNotEmpty) result.add(MapEntry(day, due));
+  }
+  return result;
+}
+
+/// Vials mit weniger als 20 % Rest.
+List<Json> lowVials(Json state) => items(state, 'vials').where((vial) {
+  final level = vialLevel(state, vial);
+  return level.totalMcg > 0 && level.fraction < 0.2;
+}).toList();

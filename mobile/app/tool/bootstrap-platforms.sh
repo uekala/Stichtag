@@ -54,21 +54,21 @@ if replacements != 1:
     raise SystemExit("Der App-Name in AndroidManifest.xml wurde nicht gefunden.")
 manifest_path.write_text(manifest, encoding="utf-8")
 
-# App-Zeichen: ein Kalenderblatt mit einem markierten Tag auf dem Grün der App.
+# App-Zeichen: ein Kalenderblatt mit einem Tropfen auf dem Grün der App.
 MARK = """    <!-- Kalenderblatt -->
     <path
         android:fillColor="{main}"
-        android:pathData="M34,38 a6,6 0 0 1 6,-6 h28 a6,6 0 0 1 6,6 v32 a6,6 0 0 1 -6,6 h-28 a6,6 0 0 1 -6,-6 Z" />
+        android:pathData="M33,44 a7,7 0 0 1 7,-7 h28 a7,7 0 0 1 7,7 v28 a7,7 0 0 1 -7,7 h-28 a7,7 0 0 1 -7,-7 Z" />
     <!-- Ringe -->
     <path
         android:strokeColor="{main}"
         android:strokeWidth="5"
         android:strokeLineCap="round"
-        android:pathData="M44,28 V36 M64,28 V36" />
-    <!-- Markierter Tag -->
+        android:pathData="M44,31 V40 M64,31 V40" />
+    <!-- Tropfen -->
     <path
         android:fillColor="{dot}"
-        android:pathData="M54,49 m-8,0 a8,8 0 1 0 16,0 a8,8 0 1 0 -16,0" />
+        android:pathData="M54,46 C54,46 45,56 45,63 a9,9 0 0 0 18,0 C63,56 54,46 54,46 Z" />
 """
 VECTOR = """<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"

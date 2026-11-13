@@ -92,6 +92,27 @@ dialog form{display:flex;flex-direction:column;gap:12px;padding:18px}
 .up{color:var(--warn)} .down{color:var(--ok)}
 .qr{max-width:240px;background:#fff;padding:8px;border-radius:8px}
 .qr svg{width:100%;height:auto;display:block}
+.brand{display:flex;align-items:center;gap:10px}
+.logo{width:30px;height:30px;flex:0 0 auto}
+.ringrow{display:flex;align-items:center;gap:12px}
+.ring{width:58px;height:58px;flex:0 0 auto}
+.ring circle{fill:none;stroke-width:7}
+.ring .bg{stroke:var(--line)} .ring .fg{stroke:var(--accent);stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%}
+.card.alert{border-left:4px solid var(--warn)}
+.up-row{display:flex;gap:12px;align-items:baseline;padding:6px 0;border-top:1px solid var(--line)}
+.up-row:first-of-type{border-top:0}
+.up-row .when{flex:0 0 96px;font-size:.85rem;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:20;background:var(--ink);color:var(--bg);border-radius:10px;padding:10px 10px 10px 16px;display:flex;gap:12px;align-items:center;max-width:calc(100% - 32px);box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.toast button{background:transparent;border-color:transparent;color:var(--bg);text-decoration:underline;padding:4px 8px}
+.bars{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;align-items:end}
+.bcol{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.7rem;color:var(--muted);min-width:0}
+.btrack{width:100%;height:90px;background:var(--line);border-radius:5px;display:flex;align-items:flex-end;overflow:hidden}
+.btrack i{display:block;width:100%;background:var(--accent)}
+.btrack.none{background:transparent;border:1px dashed var(--line)}
+.hbar{display:grid;grid-template-columns:minmax(90px,38%) 1fr 34px;gap:10px;align-items:center;font-size:.9rem}
+.hbar .num{text-align:right}
+.check{flex-direction:row;align-items:center;gap:8px;color:var(--ink)}
+.check input{width:auto}
 .hide{display:none!important}
 @media (prefers-reduced-motion:no-preference){.bar>i{transition:width .3s}}
 </style>
@@ -99,13 +120,14 @@ dialog form{display:flex;flex-direction:column;gap:12px;padding:18px}
 <body>
 <div class="wrap">
 <header>
-  <div class="top"><h1>Stichtag</h1><span class="sync" id="sync">Lädt …</span></div>
+  <div class="top"><div class="brand"><svg class="logo" viewBox="0 0 108 108" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#12907E"/><stop offset="1" stop-color="#07453C"/></linearGradient></defs><rect width="108" height="108" rx="26" fill="url(#lg)"/><path fill="#fff" d="M30 38a8 8 0 0 1 8-8h32a8 8 0 0 1 8 8v36a8 8 0 0 1-8 8H38a8 8 0 0 1-8-8z"/><path stroke="#fff" stroke-width="6" stroke-linecap="round" d="M42 23v10M66 23v10"/><path fill="#0B6E60" d="M54 42c0 0-11 12-11 20a11 11 0 0 0 22 0c0-8-11-20-11-20z"/></svg><h1>Stichtag</h1></div><span class="sync" id="sync">Lädt …</span></div>
   <nav id="nav">
-    <a href="#heute">Heute</a><a href="#plan">Protokolle</a><a href="#verlauf">Verlauf</a><a href="#koerper">Körper</a><a href="#vials">Vials &amp; Rechner</a><a href="#daten">Daten</a>
+    <a href="#heute">Heute</a><a href="#plan">Protokolle</a><a href="#verlauf">Verlauf</a><a href="#auswertung">Auswertung</a><a href="#koerper">Körper</a><a href="#vials">Vials &amp; Rechner</a><a href="#daten">Daten</a>
   </nav>
 </header>
 <main id="view"></main>
 </div>
+<div id="toast" class="toast hide" role="status"><span></span><button data-act="undo">Rückgängig</button></div>
 <dialog id="dlg"><form id="dlgform" method="dialog"></form></dialog>
 
 <script src="qrcode.js"></script>
@@ -128,7 +150,7 @@ const deDate=s=>{const d=parseYmd(s);return WD[d.getDay()]+', '+pad(d.getDate())
 const DEFAULT_SITES=['Bauch links','Bauch rechts','Oberschenkel links','Oberschenkel rechts','Flanke links','Flanke rechts'];
 const LS='peptid-tracker-v1';
 
-function blank(){return{v:1,rev:0,demo:false,protocols:[],logs:[],vials:[],body:[],sites:DEFAULT_SITES.slice(),settings:{notify:'',followup:0}}}
+function blank(){return{v:1,rev:0,demo:false,protocols:[],logs:[],vials:[],body:[],sites:DEFAULT_SITES.slice(),settings:{notify:'',followup:0,lowvial:true}}}
 function demoState(){
   const t=today(),s=blank();s.demo=true;
   const v={id:uid(),demo:true,name:'Beispiel A',mg:5,ml:2,mixed:addDays(t,-6)};
@@ -141,7 +163,7 @@ function demoState(){
   return s;
 }
 function normalize(o){const b=blank();if(!o||typeof o!=='object')return b;
-  return{v:1,rev:+o.rev||0,demo:!!o.demo,protocols:Array.isArray(o.protocols)?o.protocols:[],logs:Array.isArray(o.logs)?o.logs:[],vials:Array.isArray(o.vials)?o.vials:[],body:Array.isArray(o.body)?o.body:[],sites:Array.isArray(o.sites)&&o.sites.length?o.sites.map(String):b.sites,settings:{notify:String((o.settings||{}).notify||''),followup:Math.max(0,Math.round(+(o.settings||{}).followup)||0)}}}
+  return{v:1,rev:+o.rev||0,demo:!!o.demo,protocols:Array.isArray(o.protocols)?o.protocols:[],logs:Array.isArray(o.logs)?o.logs:[],vials:Array.isArray(o.vials)?o.vials:[],body:Array.isArray(o.body)?o.body:[],sites:Array.isArray(o.sites)&&o.sites.length?o.sites.map(String):b.sites,settings:{notify:String((o.settings||{}).notify||''),followup:Math.max(0,Math.round(+(o.settings||{}).followup)||0),lowvial:(o.settings||{}).lowvial!==false}}}
 
 let state=blank(),mobile=null,pairing=null,services=null,saving=false,dirty=false,loaded=false;
 function setSync(t){$('#sync').textContent=t}
@@ -218,7 +240,7 @@ function adherence(day){
 }
 
 /* ---------- Ansichten ---------- */
-const VIEWS=['heute','plan','verlauf','koerper','vials','daten'];
+const VIEWS=['heute','plan','verlauf','auswertung','koerper','vials','daten'];
 const METRICS={weight:['Gewicht','kg'],waist:['Bauchumfang','cm'],fat:['Körperfett','%']};
 let bmetric='weight';
 let verlaufFilter='';
@@ -227,8 +249,12 @@ function render(){
   const v=current();
   document.querySelectorAll('#nav a').forEach(a=>{if(a.getAttribute('href')==='#'+v)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
   const banner=state.demo?`<div class="banner"><span>Das sind Beispieldaten, damit du siehst, wie alles aussieht.</span><button data-act="clear-demo">Beispieldaten entfernen</button></div>`:'';
-  $('#view').innerHTML=banner+({heute:vHeute,plan:vPlan,verlauf:vVerlauf,koerper:vKoerper,vials:vVials,daten:vDaten}[v])();
+  $('#view').innerHTML=banner+({heute:vHeute,plan:vPlan,verlauf:vVerlauf,auswertung:vAuswertung,koerper:vKoerper,vials:vVials,daten:vDaten}[v])();
   if(v==='vials')calc();
+}
+function ring(done,due){
+  const r=24,c=2*Math.PI*r,f=due?done/due:0;
+  return `<svg class="ring" viewBox="0 0 58 58" role="img" aria-label="${done} von ${due} erledigt"><circle class="bg" cx="29" cy="29" r="${r}"/><circle class="fg" cx="29" cy="29" r="${r}" stroke-dasharray="${(c*f).toFixed(1)} ${c.toFixed(1)}"/></svg>`;
 }
 function vHeute(){
   const t=today(),due=state.protocols.filter(p=>isDue(p,t)),tl=logsOn(t);
@@ -236,14 +262,49 @@ function vHeute(){
   let week='';for(let i=6;i>=0;i--){const d=addDays(t,-i),a=adherence(d);const c=!a.due?'':a.done===a.due?'full':a.done>0?'part':(i===0?'':'miss');week+=`<div class="day"><span class="dot ${c}" title="${a.done} von ${a.due}"></span>${WD[parseYmd(d).getDay()]}</div>`}
   const cards=due.map(p=>{const l=tl.find(x=>x.pid===p.id);const cyc=p.weeks>0?` · Tag ${dayDiff(p.start,t)+1} von ${p.weeks*7}`:'';
     return `<div class="card ${l?'done':'open'}"><div class="row"><h3>${esc(p.name)}</h3><span class="pill ${l?'ok':'warn'}">${l?'Erledigt':'Offen'}</span></div>
-    <div class="row"><span><span class="num">${fmt(p.dose,3)} ${esc(p.unit)}</span> <span class="muted">${p.time?'· '+esc(p.time)+' Uhr':''}${cyc}</span></span>
-    ${l?`<span class="muted">${esc(l.ts.slice(11))} Uhr${l.site?' · '+esc(l.site):''}</span>`:`<button class="primary" data-act="log" data-pid="${p.id}">Eintragen</button>`}</div></div>`}).join('');
-  const extra=tl.filter(l=>!due.some(p=>p.id===l.pid)).map(l=>`<div class="card done"><div class="row"><h3>${esc(l.name)}</h3><span class="muted">${esc(l.ts.slice(11))} Uhr</span></div><span class="num">${fmt(l.dose,3)} ${esc(l.unit)}</span></div>`).join('');
+    <span><span class="num">${fmt(p.dose,3)} ${esc(p.unit)}</span> <span class="muted">${p.time?'· '+esc(p.time)+' Uhr':''}${cyc}</span></span>
+    ${l?`<div class="row"><span class="muted">${esc(l.ts.slice(11))} Uhr${l.site?' · '+esc(l.site):''}</span><button class="ghost" data-act="edit-log" data-id="${l.id}">Bearbeiten</button></div>`
+      :`<div class="actions"><button data-act="log" data-pid="${p.id}">Anpassen</button><button class="primary" data-act="quick" data-pid="${p.id}">Erledigt</button></div>`}</div>`}).join('');
+  const extra=tl.filter(l=>!due.some(p=>p.id===l.pid)).map(l=>`<div class="card done"><div class="row"><h3>${esc(l.name)}</h3><span class="muted">${esc(l.ts.slice(11))} Uhr</span></div><div class="row"><span class="num">${fmt(l.dose,3)} ${esc(l.unit)}</span><button class="ghost" data-act="edit-log" data-id="${l.id}">Bearbeiten</button></div></div>`).join('');
+  const low=state.vials.map(v=>({v,r:vialLeft(v)})).filter(x=>x.r.total>0&&x.r.pct<20).map(x=>`<div class="card alert"><div class="row"><span><strong>${esc(x.v.name)}</strong> ${x.r.left<=0?'ist leer':'ist fast leer'}</span><span class="num">${fmt(x.r.left/1000,3)} mg übrig</span></div></div>`).join('');
+  let up='';for(let i=1;i<=7;i++){const d=addDays(t,i),ps=state.protocols.filter(p=>isDue(p,d));if(ps.length)up+=`<div class="up-row"><span class="when">${i===1?'Morgen':deDate(d).slice(0,10)}</span><span>${ps.map(p=>esc(p.name)+' <span class="muted num">'+fmt(p.dose,3)+' '+esc(p.unit)+'</span>').join(', ')}</span></div>`}
   return `<section><div class="row"><h2>${deDate(t)}</h2><button data-act="log" data-pid="">Freie Dosis eintragen</button></div>
-  <div class="summary"><div class="card"><span class="muted">Heute erledigt</span><span class="big">${done} / ${due.length}</span></div>
+  <div class="summary"><div class="card"><div class="ringrow">${ring(done,due.length)}<div><span class="muted">Heute erledigt</span><br><span class="big">${done} / ${due.length}</span></div></div></div>
   <div class="card"><span class="muted">Nächste Stelle laut Rotation</span><strong>${esc(nextSite()||'Keine Stellen angelegt')}</strong></div></div>
-  <div class="card"><span class="muted">Letzte 7 Tage</span><div class="week">${week}</div></div></section>
-  <section><h2>Fällig heute</h2>${cards||`<div class="card"><span class="muted">Heute ist nichts fällig. Lege unter Protokolle einen Plan an.</span></div>`}${extra}</section>`;
+  <div class="card"><span class="muted">Letzte 7 Tage</span><div class="week">${week}</div></div>${low}</section>
+  <section><h2>Fällig heute</h2>${cards||`<div class="card"><span class="muted">Heute ist nichts fällig. Lege unter Protokolle einen Plan an.</span></div>`}${extra}</section>
+  <section><h2>Die nächsten 7 Tage</h2><div class="card">${up||`<span class="muted">In den nächsten 7 Tagen ist nichts geplant.</span>`}</div></section>`;
+}
+/* ---------- Auswertung ---------- */
+const nE=n=>n+(n===1?' Eintrag':' Einträge');
+function amount(sums){return Object.keys(sums).map(u=>u==='mcg'&&sums[u]>=1000?fmt(sums[u]/1000,2)+' mg':fmt(sums[u],2)+' '+u).join(' + ')}
+function weekStats(t,weeks){const out=[];for(let w=weeks-1;w>=0;w--){let due=0,done=0;for(let i=6;i>=0;i--){const a=adherence(addDays(t,-(w*7+i)));due+=a.due;done+=a.done}out.push({start:addDays(t,-(w*7+6)),due,done})}return out}
+function peptideStats(t){
+  const from=addDays(t,-29),map={};
+  state.logs.forEach(l=>{const m=map[l.name]=map[l.name]||{name:l.name,total:0,recent:0,sums:{},last:'',pid:''};m.total++;if(l.ts>m.last)m.last=l.ts;if(l.pid)m.pid=l.pid;
+    if(l.ts.slice(0,10)>=from){m.recent++;m.sums[l.unit]=(m.sums[l.unit]||0)+(+l.dose||0)}});
+  return Object.values(map).sort((a,b)=>b.last.localeCompare(a.last)).map(m=>{
+    const p=state.protocols.find(x=>x.id===m.pid);let due=0,done=0;
+    if(p)for(let i=0;i<30;i++){const d=addDays(t,-i);if(isDue(p,d)){due++;if(state.logs.some(l=>l.pid===p.id&&l.ts.slice(0,10)===d))done++}}
+    return Object.assign(m,{due,done})});
+}
+function vAuswertung(){
+  const t=today(),ws=weekStats(t,8),from30=addDays(t,-29),from60=addDays(t,-59);
+  const bars=ws.map(w=>{const pct=w.due?Math.round(w.done/w.due*100):null;return `<div class="bcol"><span class="num">${pct===null?'–':pct+' %'}</span><div class="btrack ${pct===null?'none':''}"><i style="height:${pct||0}%"></i></div><span>${w.start.slice(8,10)}.${w.start.slice(5,7)}.</span></div>`}).join('');
+  const tot=ws.reduce((a,w)=>({due:a.due+w.due,done:a.done+w.done}),{due:0,done:0});
+  const peps=peptideStats(t).map(m=>`<div class="card"><div class="row"><h3>${esc(m.name)}</h3><span class="muted">${nE(m.total)} gesamt</span></div>
+    <span>${m.recent?`${nE(m.recent)} in 30 Tagen · <span class="num">${esc(amount(m.sums))}</span>`:'Keine Einträge in den letzten 30 Tagen'}</span>
+    <span class="muted">Zuletzt ${deDate(m.last.slice(0,10))}</span>
+    ${m.due?`<div class="row"><span class="muted">Einhaltung 30 Tage</span><span class="num">${m.done} von ${m.due} · ${Math.round(m.done/m.due*100)} %</span></div><div class="bar ${m.done/m.due<.8?'low':''}"><i style="width:${(m.done/m.due*100).toFixed(1)}%"></i></div>`:''}</div>`).join('');
+  const feel={};state.logs.forEach(l=>{const d=l.ts.slice(0,10);if(l.feel>0&&d>=from60){(feel[d]=feel[d]||[]).push(+l.feel)}});
+  const fpts=Object.keys(feel).sort().map(d=>({date:d,v:feel[d].reduce((a,b)=>a+b,0)/feel[d].length}));
+  const sc={};state.logs.forEach(l=>{if(l.site&&l.ts.slice(0,10)>=from30)sc[l.site]=(sc[l.site]||0)+1});
+  const sites=[...new Set([...state.sites,...Object.keys(sc)])],max=Math.max(1,...Object.values(sc));
+  const sbars=sites.map(x=>`<div class="hbar"><span>${esc(x)}</span><div class="bar"><i style="width:${((sc[x]||0)/max*100).toFixed(1)}%"></i></div><span class="num">${sc[x]||0}</span></div>`).join('');
+  return `<section><h2>Einhaltung</h2><div class="card"><div class="row"><span class="muted">Letzte 8 Wochen, je 7 Tage ab dem angegebenen Datum</span><span class="num">${tot.due?Math.round(tot.done/tot.due*100)+' % gesamt':'–'}</span></div><div class="bars">${bars}</div></div></section>
+  <section><h2>Je Peptid</h2>${peps||`<div class="card"><span class="muted">Noch keine Einträge.</span></div>`}</section>
+  <section><h2>Befinden</h2><div class="card"><span class="muted">Mittelwert je Tag, letzte 60 Tage (1 = schlecht, 5 = sehr gut)</span>${fpts.length<2?`<span class="muted">Ab zwei Tagen mit Angabe erscheint hier die Kurve.</span>`:chart(fpts,'Befinden')}</div></section>
+  <section><h2>Stellen</h2><div class="card"><span class="muted">Einträge je Stelle in den letzten 30 Tagen</span>${sbars||`<span class="muted">Keine Stellen angelegt.</span>`}</div></section>`;
 }
 function vPlan(){
   const t=today();
@@ -260,9 +321,9 @@ function vVerlauf(){
   const logs=state.logs.filter(l=>!verlaufFilter||l.name===verlaufFilter).sort((a,b)=>b.ts.localeCompare(a.ts));
   let html='',day='';
   logs.forEach(l=>{const d=l.ts.slice(0,10);if(d!==day){if(day)html+='</div>';day=d;html+=`<div class="card"><span class="muted">${deDate(d)}</span>`}
-    html+=`<div class="row"><span><strong>${esc(l.name)}</strong> <span class="num">${fmt(l.dose,3)} ${esc(l.unit)}</span><br><span class="muted">${esc(l.ts.slice(11))} Uhr${l.site?' · '+esc(l.site):''}${l.feel?' · Befinden '+l.feel+'/5':''}${l.note?' · '+esc(l.note):''}</span></span><button class="ghost danger" data-act="del" data-kind="logs" data-id="${l.id}">Löschen</button></div>`});
+    html+=`<div class="row"><span><strong>${esc(l.name)}</strong> <span class="num">${fmt(l.dose,3)} ${esc(l.unit)}</span><br><span class="muted">${esc(l.ts.slice(11))} Uhr${l.site?' · '+esc(l.site):''}${l.feel?' · Befinden '+l.feel+'/5':''}${l.note?' · '+esc(l.note):''}</span></span><span><button class="ghost" data-act="edit-log" data-id="${l.id}">Bearbeiten</button><button class="ghost danger" data-act="del" data-kind="logs" data-id="${l.id}">Löschen</button></span></div>`});
   if(day)html+='</div>';
-  return `<section><div class="row"><h2>Verlauf</h2><span class="muted">${logs.length} Einträge</span></div>
+  return `<section><div class="row"><h2>Verlauf</h2><span class="muted">${nE(logs.length)}</span></div>
   <label>Filter<select id="vfilter"><option value="">Alle Peptide</option>${names.map(n=>`<option ${n===verlaufFilter?'selected':''}>${esc(n)}</option>`).join('')}</select></label>
   ${html||`<div class="card"><span class="muted">Noch keine Einträge.</span></div>`}</section>`;
 }
@@ -327,7 +388,8 @@ function vDaten(){
   <section><h2>Erinnerungen</h2><div class="card">
   <label>Benachrichtigen über<select id="r-notify"><option value="">Aus</option>${[...new Set([...(services||[]),state.settings.notify].filter(Boolean))].map(s=>`<option ${s===state.settings.notify?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
   <label>Nochmal erinnern nach (Minuten, 0 = nie)<input id="r-follow" inputmode="numeric" value="${state.settings.followup||0}"></label>
-  <span class="muted">Erinnert wird zur Uhrzeit des Protokolls, solange die Dosis an dem Tag noch offen ist. Protokolle ohne Uhrzeit erinnern nicht.</span>
+  <label class="check"><input type="checkbox" id="r-lowvial" ${state.settings.lowvial?'checked':''}>Warnen, wenn ein Vial unter 20 % fällt</label>
+  <span class="muted">Erinnert wird zur Uhrzeit des Protokolls, solange die Dosis an dem Tag noch offen ist. Protokolle ohne Uhrzeit erinnern nicht. In der Benachrichtigung der Home-Assistant-App trägt „Erledigt“ die Dosis direkt ein.</span>
   <div class="actions"><button data-act="test-notify">Test senden</button><button class="primary" data-act="save-rem">Erinnerungen speichern</button></div><span class="muted" id="r-msg"></span></div></section>
   <section><h2>Handy-App</h2><div class="card">${mobileCard()}</div></section>
   <section><h2>Sichern und übertragen</h2><div class="card"><span class="muted">Export lädt alle Daten als JSON herunter oder kopiert sie in die Zwischenablage. Zum Import fügst du ein exportiertes JSON hier ein.</span>
@@ -342,17 +404,24 @@ function openDlg(kind,html){form.dataset.kind=kind;form.innerHTML=html;if(!dlg.o
 const unitOpts=u=>['mcg','mg','IE'].map(x=>`<option ${x===u?'selected':''}>${x}</option>`).join('');
 const vialOpts=id=>`<option value="">Kein Vial</option>`+state.vials.map(v=>`<option value="${v.id}" ${v.id===id?'selected':''}>${esc(v.name)}</option>`).join('');
 const foot=l=>`<div class="actions"><button type="button" data-act="close">Abbrechen</button><button class="primary" type="submit">${l}</button></div><span class="muted" id="f-err"></span>`;
-function dlgLog(pid){
-  const p=state.protocols.find(x=>x.id===pid)||{},ns=nextSite();
-  openDlg('log',`<h2>Dosis eintragen</h2><input type="hidden" id="f-pid" value="${esc(pid||'')}">
+function dlgLog(pid,lid){
+  const l=state.logs.find(x=>x.id===lid),p=l||state.protocols.find(x=>x.id===pid)||{},site=l?l.site:nextSite(),feel=l?+l.feel||0:0;
+  openDlg('log',`<h2>${l?'Eintrag bearbeiten':'Dosis eintragen'}</h2><input type="hidden" id="f-pid" value="${esc(l?l.pid:pid||'')}"><input type="hidden" id="f-lid" value="${esc(l?l.id:'')}">
   <label>Peptid<input id="f-name" required value="${esc(p.name||'')}" list="f-names"></label><datalist id="f-names">${state.protocols.map(x=>`<option value="${esc(x.name)}">`).join('')}</datalist>
   <div class="grid3"><label>Dosis<input id="f-dose" inputmode="decimal" required value="${p.dose??''}"></label><label>Einheit<select id="f-unit">${unitOpts(p.unit||'mcg')}</select></label></div>
-  <label>Zeitpunkt<input id="f-ts" type="datetime-local" required value="${nowLocal()}"></label>
-  <div class="grid2"><label>Stelle<select id="f-site"><option value="">Keine Angabe</option>${state.sites.map(s=>`<option ${s===ns?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
+  <label>Zeitpunkt<input id="f-ts" type="datetime-local" required value="${esc(l?l.ts:nowLocal())}"></label>
+  <div class="grid2"><label>Stelle<select id="f-site"><option value="">Keine Angabe</option>${[...new Set([...state.sites,site].filter(Boolean))].map(s=>`<option ${s===site?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
   <label>Vial<select id="f-vial">${vialOpts(p.vialId||'')}</select></label></div>
-  <label>Befinden<select id="f-feel"><option value="0">Keine Angabe</option><option value="1">1 · schlecht</option><option value="2">2</option><option value="3">3 · neutral</option><option value="4">4</option><option value="5">5 · sehr gut</option></select></label>
-  <label>Notiz<input id="f-note"></label>${foot('Eintragen')}`);
+  <label>Befinden<select id="f-feel">${['Keine Angabe','1 · schlecht','2','3 · neutral','4','5 · sehr gut'].map((x,i)=>`<option value="${i}" ${i===feel?'selected':''}>${x}</option>`).join('')}</select></label>
+  <label>Notiz<input id="f-note" value="${esc(l?l.note:'')}"></label>${foot(l?'Speichern':'Eintragen')}`);
 }
+function quickLog(pid){
+  const p=state.protocols.find(x=>x.id===pid);if(!p)return;
+  const id=uid();state.logs.push({id,ts:nowLocal(),pid:p.id,name:p.name,dose:p.dose,unit:p.unit,site:nextSite(),feel:0,note:'',vialId:p.vialId||''});
+  save();render();toast('Eingetragen: '+p.name,id);
+}
+let toastTimer=null,undoId='';
+function toast(text,id){undoId=id;const t=$('#toast');t.querySelector('span').textContent=text;t.classList.remove('hide');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.add('hide'),8000)}
 function dlgProtocol(id){
   const p=state.protocols.find(x=>x.id===id)||{type:'daily',n:2,days:[],start:today(),weeks:'',unit:'mcg',time:''};
   openDlg('protocol',`<h2>${id?'Protokoll bearbeiten':'Neues Protokoll'}</h2><input type="hidden" id="f-id" value="${esc(id||'')}">
@@ -382,7 +451,8 @@ form.addEventListener('submit',ev=>{
     const dose=num(val('f-dose')),name=val('f-name').trim();if(!name||!(dose>0))return err('Bitte Peptid und eine Dosis größer als 0 angeben.');
     let pid=val('f-pid');const pr=state.protocols.find(p=>p.id===pid);
     if(!pr||pr.name!==name){const m=state.protocols.find(p=>p.name.toLowerCase()===name.toLowerCase());pid=m?m.id:''}
-    state.logs.push({id:uid(),ts:val('f-ts')||nowLocal(),pid,name,dose,unit:val('f-unit'),site:val('f-site'),feel:+val('f-feel')||0,note:val('f-note').trim(),vialId:val('f-vial')});
+    const rec={ts:val('f-ts')||nowLocal(),pid,name,dose,unit:val('f-unit'),site:val('f-site'),feel:+val('f-feel')||0,note:val('f-note').trim(),vialId:val('f-vial')},old=state.logs.find(l=>l.id===val('f-lid'));
+    if(old)Object.assign(old,rec);else state.logs.push({id:uid(),...rec});
   }else if(k==='protocol'){
     const dose=num(val('f-dose')),name=val('f-name').trim(),type=val('f-type');if(!name||!(dose>0)||!val('f-start'))return err('Bitte Peptid, Dosis und Startdatum angeben.');
     const days=[0,1,2,3,4,5,6].filter(d=>$('#f-day-'+d).checked);if(type==='weekdays'&&!days.length)return err('Bitte mindestens einen Wochentag wählen.');
@@ -408,6 +478,9 @@ document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act,id=b.dataset.id;
   if(a==='close')dlg.close();
   else if(a==='log')dlgLog(b.dataset.pid);
+  else if(a==='edit-log')dlgLog('',id);
+  else if(a==='quick')quickLog(b.dataset.pid);
+  else if(a==='undo'){state.logs=state.logs.filter(l=>l.id!==undoId);$('#toast').classList.add('hide');save();render()}
   else if(a==='edit-p')dlgProtocol(id);
   else if(a==='edit-v')dlgVial(id);
   else if(a==='edit-b')dlgBody(id);
@@ -417,7 +490,7 @@ document.addEventListener('click',async e=>{
   else if(a==='clear-demo'){['protocols','logs','vials','body'].forEach(k=>state[k]=state[k].filter(x=>!x.demo));state.demo=false;save();render()}
   else if(a==='vial-calc'){const v=state.vials.find(x=>x.id===id);if(v){$('#c-mg').value=v.mg;if(v.ml)$('#c-ml').value=v.ml;calc();$('#c-mg').scrollIntoView({block:'center'})}}
   else if(a==='save-sites'){const s=$('#sites').value.split('\n').map(x=>x.trim()).filter(Boolean);state.sites=[...new Set(s)];save();render()}
-  else if(a==='save-rem'){state.settings={notify:$('#r-notify').value,followup:Math.max(0,Math.round(num($('#r-follow').value))||0)};save();render();$('#r-msg').textContent='Gespeichert.'}
+  else if(a==='save-rem'){state.settings={notify:$('#r-notify').value,followup:Math.max(0,Math.round(num($('#r-follow').value))||0),lowvial:$('#r-lowvial').checked};save();render();$('#r-msg').textContent='Gespeichert.'}
   else if(a==='test-notify'){const s=$('#r-notify').value,m=$('#r-msg');if(!s){m.textContent='Bitte zuerst einen Dienst wählen.';return}m.textContent='Sendet …';
     try{const r=await fetch('api/test-notify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({service:s})}),j=await r.json();m.textContent=j.ok?'Testnachricht gesendet. Kommt sie nicht an, prüfe den gewählten Dienst.':'Senden fehlgeschlagen: '+(j.error||'unbekannter Fehler')}catch(x){m.textContent='Senden fehlgeschlagen. Verbindung zu Home Assistant prüfen.'}}
   else if(a==='pair'){

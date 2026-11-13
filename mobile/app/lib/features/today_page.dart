@@ -10,6 +10,40 @@ class TodayPage extends StatelessWidget {
 
   final AppStore store;
 
+  /// Trägt die Dosis mit den Vorgaben des Protokolls ein und bietet Rückgängig an.
+  void _quickLog(BuildContext context, Json protocol) {
+    final id = newId();
+    final name = str(protocol['name']);
+    store.change((state) {
+      items(state, 'logs').add(<String, dynamic>{
+        'id': id,
+        'ts': nowStamp(),
+        'pid': protocol['id'],
+        'name': name,
+        'dose': protocol['dose'],
+        'unit': protocol['unit'],
+        'site': nextSite(state),
+        'feel': 0,
+        'note': '',
+        'vialId': str(protocol['vialId']),
+      });
+    });
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('Eingetragen: $name'),
+          action: SnackBarAction(
+            label: 'Rückgängig',
+            onPressed: () => store.change(
+              (state) =>
+                  items(state, 'logs').removeWhere((log) => log['id'] == id),
+            ),
+          ),
+        ),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = store.state;
@@ -28,83 +62,194 @@ class TodayPage extends StatelessWidget {
     final extra = todays
         .where((log) => !due.any((p) => p['id'] == log['pid']))
         .toList();
+    final low = lowVials(state);
+    final next = upcoming(state, today);
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-      children: [
-        Text(deDate(today), style: theme.textTheme.titleLarge),
-        const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: StatCard(
-                label: 'Heute erledigt',
-                value: '$done / ${due.length}',
+    return RefreshIndicator(
+      onRefresh: store.refresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        children: [
+          Text(deDate(today), style: theme.textTheme.titleLarge),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: CircularProgressIndicator(
+                            value: due.isEmpty ? 0 : done / due.length,
+                            strokeWidth: 6,
+                            backgroundColor: colors.outlineVariant,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Heute erledigt',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                              Text(
+                                '$done / ${due.length}',
+                                style: theme.textTheme.headlineSmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: StatCard(
+                  label: 'Nächste Stelle',
+                  value: site.isEmpty ? '–' : site,
+                  small: true,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Letzte 7 Tage', style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      for (var back = 6; back >= 0; back--)
+                        Expanded(
+                          child: _DayDot(
+                            day: addDays(today, -back),
+                            result: adherence(state, addDays(today, -back)),
+                            isToday: back == 0,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: StatCard(
-                label: 'Nächste Stelle',
-                value: site.isEmpty ? '–' : site,
-                small: true,
+          ),
+          for (final vial in low)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Card(
+                margin: EdgeInsets.zero,
+                color: colors.tertiaryContainer,
+                child: ListTile(
+                  leading: Icon(
+                    Icons.warning_amber,
+                    color: colors.onTertiaryContainer,
+                  ),
+                  title: Text(
+                    vialLevel(state, vial).leftMcg <= 0
+                        ? '${str(vial['name'])} ist leer'
+                        : '${str(vial['name'])} ist fast leer',
+                    style: TextStyle(color: colors.onTertiaryContainer),
+                  ),
+                  subtitle: Text(
+                    '${fmtNum(vialLevel(state, vial).leftMcg / 1000, 3)} mg übrig',
+                    style: TextStyle(color: colors.onTertiaryContainer),
+                  ),
+                ),
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Card(
-          margin: EdgeInsets.zero,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Letzte 7 Tage', style: theme.textTheme.bodySmall),
-                const SizedBox(height: 8),
-                Row(
+          const SizedBox(height: 20),
+          Text('Fällig heute', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 8),
+          if (due.isEmpty)
+            const InfoCard(
+              'Heute ist nichts fällig. Lege unter Protokolle einen Plan an.',
+            ),
+          for (final protocol in due)
+            _DueCard(
+              store: store,
+              protocol: protocol,
+              log: firstOrNull(todays, (log) => log['pid'] == protocol['id']),
+              today: today,
+              onQuickLog: () => _quickLog(context, protocol),
+            ),
+          for (final log in extra)
+            Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              child: ListTile(
+                title: Text(str(log['name'])),
+                subtitle: Text(
+                  '${fmtNum(toDouble(log['dose']), 3)} ${str(log['unit'])}',
+                ),
+                trailing: Pill('Eingetragen', color: colors.primary),
+                onTap: () =>
+                    openPage(context, LogEditor(store: store, existing: log)),
+              ),
+            ),
+          const SizedBox(height: 20),
+          Text('Die nächsten 7 Tage', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 8),
+          if (next.isEmpty)
+            const InfoCard('In den nächsten 7 Tagen ist nichts geplant.')
+          else
+            Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
+                child: Column(
                   children: [
-                    for (var back = 6; back >= 0; back--)
-                      Expanded(
-                        child: _DayDot(
-                          day: addDays(today, -back),
-                          result: adherence(state, addDays(today, -back)),
-                          isToday: back == 0,
+                    for (final entry in next)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: 92,
+                              child: Text(
+                                entry.key == addDays(today, 1)
+                                    ? 'Morgen'
+                                    : deDate(entry.key).substring(0, 10),
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                entry.value
+                                    .map(
+                                      (p) =>
+                                          '${str(p['name'])} ${fmtNum(toDouble(p['dose']), 3)} ${str(p['unit'])}',
+                                    )
+                                    .join(', '),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                   ],
                 ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-        Text('Fällig heute', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
-        if (due.isEmpty)
-          const InfoCard(
-            'Heute ist nichts fällig. Lege unter Protokolle einen Plan an.',
-          ),
-        for (final protocol in due)
-          _DueCard(
-            store: store,
-            protocol: protocol,
-            log: firstOrNull(todays, (log) => log['pid'] == protocol['id']),
-            today: today,
-          ),
-        for (final log in extra)
-          Card(
-            margin: const EdgeInsets.only(bottom: 10),
-            child: ListTile(
-              title: Text(str(log['name'])),
-              subtitle: Text(
-                '${fmtNum(toDouble(log['dose']), 3)} ${str(log['unit'])}',
               ),
-              trailing: Pill('Eingetragen', color: colors.primary),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -162,12 +307,14 @@ class _DueCard extends StatelessWidget {
     required this.protocol,
     required this.log,
     required this.today,
+    required this.onQuickLog,
   });
 
   final AppStore store;
   final Json protocol;
   final Json? log;
   final String today;
+  final VoidCallback onQuickLog;
 
   @override
   Widget build(BuildContext context) {
@@ -216,18 +363,39 @@ class _DueCard extends StatelessWidget {
             Text(details),
             const SizedBox(height: 8),
             if (entry == null)
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton(
-                  onPressed: () => openPage(
-                    context,
-                    LogEditor(store: store, protocol: protocol),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => openPage(
+                      context,
+                      LogEditor(store: store, protocol: protocol),
+                    ),
+                    child: const Text('Anpassen'),
                   ),
-                  child: const Text('Eintragen'),
-                ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: onQuickLog,
+                    icon: const Icon(Icons.check),
+                    label: const Text('Dosis erledigt'),
+                  ),
+                ],
               )
             else
-              Text(doneText, style: theme.textTheme.bodySmall),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(doneText, style: theme.textTheme.bodySmall),
+                  ),
+                  TextButton(
+                    onPressed: () => openPage(
+                      context,
+                      LogEditor(store: store, existing: entry),
+                    ),
+                    child: const Text('Bearbeiten'),
+                  ),
+                ],
+              ),
           ],
         ),
       ),
