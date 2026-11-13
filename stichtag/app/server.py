@@ -22,7 +22,7 @@ WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "www")
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 DEV = os.environ.get("DEV") == "1"
 DEV_MOBILE = os.environ.get("DEV_MOBILE") == "1"
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 PORT = int(os.environ.get("PORT", "8099"))
 MOBILE_PORT = int(os.environ.get("MOBILE_PORT", "8098"))
 PAIRING_TTL = 600
@@ -587,12 +587,29 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def body(self):
+    def raw_body(self):
+        """Liest den Anfragekörper, auch wenn er in Stücken (chunked) ankommt."""
+        if "chunked" in self.headers.get("Transfer-Encoding", "").lower():
+            data = b""
+            while True:
+                size = int(self.rfile.readline(1024).split(b";")[0].strip() or b"0", 16)
+                if size == 0:
+                    while self.rfile.readline(1024).strip():
+                        pass
+                    return data
+                if size < 0 or len(data) + size > MAX_BODY:
+                    return None
+                data += self.rfile.read(size)
+                self.rfile.readline(1024)
         n = int(self.headers.get("Content-Length") or 0)
         if n <= 0 or n > MAX_BODY:
             return None
+        return self.rfile.read(n)
+
+    def body(self):
         try:
-            return json.loads(self.rfile.read(n))
+            raw = self.raw_body()
+            return json.loads(raw) if raw else None
         except ValueError:
             return None
 

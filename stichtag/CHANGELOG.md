@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1
+
+- Behoben: Die Handy-App konnte nicht koppeln und nicht speichern, weil der Server in Stücken gesendete Anfragen nicht las
+
 ## 1.2.0
 
 - Heute: „Erledigt“ trägt die Dosis mit einem Klick ein, „Rückgängig“ nimmt sie zurück; dazu die nächsten 7 Tage, ein Fortschrittsring und Hinweise auf fast leere Vials

@@ -81,8 +81,11 @@ class HttpStichtagApi implements StichtagApi {
         request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
       }
       if (body != null) {
+        // Feste Länge statt Übertragung in Stücken: Das versteht jeder Server.
+        final bytes = utf8.encode(jsonEncode(body));
         request.headers.contentType = ContentType.json;
-        request.add(utf8.encode(jsonEncode(body)));
+        request.contentLength = bytes.length;
+        request.add(bytes);
       }
       final response = await request.close().timeout(_timeout);
       final text = await utf8.decoder.bind(response).join().timeout(_timeout);

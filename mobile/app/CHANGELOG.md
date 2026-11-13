@@ -1,5 +1,9 @@
 # Änderungen der Handy-App
 
+## 1.1.1
+
+- Behoben: Koppeln und Speichern schlugen fehl („Der Kopplungscode ist ungültig oder abgelaufen“).
+
 ## 1.1.0
 
 - Heute: „Erledigt“ trägt die Dosis mit einem Tipp ein, „Rückgängig“ nimmt sie zurück; „Anpassen“ öffnet das Formular.
