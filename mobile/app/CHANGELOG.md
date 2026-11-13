@@ -1,5 +1,12 @@
 # Änderungen der Handy-App
 
+## 1.2.0
+
+- Dosisstufen je Protokoll: Ab einer Woche gilt eine neue Dosis; Heute, „Dosis erledigt“ und die Vorschau rechnen damit.
+- Vials haben eine Haltbarkeit in Tagen; Heute meldet abgelaufene Vials.
+- Ohne Verbindung zeigt die App den zuletzt geladenen Stand. Änderungen werden auf dem Handy gesichert und gesendet, sobald der Server erreichbar ist.
+- Die Test-APK zeigt ihre Versionsnummer.
+
 ## 1.1.2
 
 - Das Feld „Peptid“ zeigt Vorschläge zum Antippen: eigene Namen zuerst, dann gängige.

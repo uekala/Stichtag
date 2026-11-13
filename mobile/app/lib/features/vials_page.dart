@@ -86,6 +86,7 @@ class _VialCard extends StatelessWidget {
     final mg = toDouble(vial['mg']);
     final ml = toDouble(vial['ml']);
     final mixed = str(vial['mixed']);
+    final daysLeft = vialDaysLeft(vial, todayYmd());
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
@@ -136,6 +137,17 @@ class _VialCard extends StatelessWidget {
               ].join(' · '),
               style: theme.textTheme.bodySmall,
             ),
+            if (daysLeft != null)
+              Text(
+                daysLeft < 0
+                    ? 'Nicht mehr haltbar'
+                    : daysLeft == 1
+                    ? 'Noch 1 Tag haltbar'
+                    : 'Noch $daysLeft Tage haltbar',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: daysLeft < 0 ? colors.error : null,
+                ),
+              ),
             Wrap(
               alignment: WrapAlignment.end,
               children: [

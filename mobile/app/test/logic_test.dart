@@ -230,6 +230,32 @@ void main() {
     expect(nameSuggestions(state, 'Semax'), isEmpty);
   });
 
+  test('doseOn folgt den Dosisstufen ab der angegebenen Woche', () {
+    final p = protocol({
+      'dose': 2,
+      'start': '2026-10-02',
+      'steps': [
+        {'week': 9, 'dose': 6},
+        {'week': 5, 'dose': 4},
+      ],
+    });
+    expect(doseOn(p, '2026-10-02'), 2);
+    expect(doseOn(p, '2026-10-29'), 2);
+    expect(doseOn(p, '2026-10-30'), 4);
+    expect(doseOn(p, '2026-11-26'), 4);
+    expect(doseOn(p, '2026-11-27'), 6);
+    expect(doseOn(protocol({}), '2026-11-13'), 250);
+    expect(stepsLabel(p), 'ab Woche 5 4 mcg, ab Woche 9 6 mcg');
+  });
+
+  test('vialDaysLeft rechnet ab dem Anmischen', () {
+    final vial = <String, dynamic>{'mixed': '2026-10-10', 'days': 28};
+    expect(vialDaysLeft(vial, '2026-11-01'), 6);
+    expect(vialDaysLeft(vial, '2026-11-07'), 0);
+    expect(vialDaysLeft(vial, '2026-11-08'), -1);
+    expect(vialDaysLeft(<String, dynamic>{'mixed': '2026-10-10'}, '2026-11-08'), isNull);
+  });
+
   test('normalizeState füllt fehlende Teile auf', () {
     final state = normalizeState(<String, dynamic>{'rev': 7});
     expect(state['rev'], 7);

@@ -20,7 +20,7 @@ class TodayPage extends StatelessWidget {
         'ts': nowStamp(),
         'pid': protocol['id'],
         'name': name,
-        'dose': protocol['dose'],
+        'dose': doseOn(protocol, todayYmd()),
         'unit': protocol['unit'],
         'site': nextSite(state),
         'feel': 0,
@@ -173,6 +173,29 @@ class TodayPage extends StatelessWidget {
                 ),
               ),
             ),
+          for (final vial in items(state, 'vials'))
+            if ((vialDaysLeft(vial, today) ?? 0) < 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Card(
+                  margin: EdgeInsets.zero,
+                  color: colors.errorContainer,
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.event_busy,
+                      color: colors.onErrorContainer,
+                    ),
+                    title: Text(
+                      '${str(vial['name'])} ist nicht mehr haltbar',
+                      style: TextStyle(color: colors.onErrorContainer),
+                    ),
+                    subtitle: Text(
+                      'Frist abgelaufen am ${deDate(addDays(str(vial['mixed']), toInt(vial['days'])))}',
+                      style: TextStyle(color: colors.onErrorContainer),
+                    ),
+                  ),
+                ),
+              ),
           const SizedBox(height: 20),
           Text('Fällig heute', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
@@ -236,7 +259,7 @@ class TodayPage extends StatelessWidget {
                                 entry.value
                                     .map(
                                       (p) =>
-                                          '${str(p['name'])} ${fmtNum(toDouble(p['dose']), 3)} ${str(p['unit'])}',
+                                          '${str(p['name'])} ${fmtNum(doseOn(p, entry.key), 3)} ${str(p['unit'])}',
                                     )
                                     .join(', '),
                               ),
@@ -325,7 +348,7 @@ class _DueCard extends StatelessWidget {
     final weeks = toInt(protocol['weeks']);
     final day = (dayDiff(str(protocol['start']), today) ?? 0) + 1;
     final details = [
-      '${fmtNum(toDouble(protocol['dose']), 3)} ${str(protocol['unit'])}',
+      '${fmtNum(doseOn(protocol, today), 3)} ${str(protocol['unit'])}',
       if (time.isNotEmpty) '$time Uhr',
       if (weeks > 0) 'Tag $day von ${weeks * 7}',
     ].join(' · ');

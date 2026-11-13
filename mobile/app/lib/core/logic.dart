@@ -468,3 +468,50 @@ List<String> nameSuggestions(Json state, String typed, [int limit = 8]) {
   }
   return result;
 }
+
+/// Dosis an diesem Tag: die Grunddosis oder die letzte erreichte Dosisstufe.
+/// Woche 1 beginnt am Startdatum.
+double doseOn(Json protocol, String day) {
+  var dose = toDouble(protocol['dose']);
+  final diff = dayDiff(str(protocol['start']), day);
+  final steps = protocol['steps'];
+  if (diff == null || steps is! List) return dose;
+  final week = diff < 0 ? 0 : diff ~/ 7 + 1;
+  var best = 0;
+  for (final step in steps.whereType<Map>()) {
+    final from = toInt(step['week']);
+    final value = toDouble(step['dose']);
+    if (from > best && from <= week && value > 0) {
+      best = from;
+      dose = value;
+    }
+  }
+  return dose;
+}
+
+/// Dosisstufen eines Protokolls, nach Woche sortiert.
+List<MapEntry<int, double>> stepsOf(Json protocol) {
+  final steps = protocol['steps'];
+  if (steps is! List) return <MapEntry<int, double>>[];
+  return [
+    for (final step in steps.whereType<Map>())
+      if (toInt(step['week']) > 1 && toDouble(step['dose']) > 0)
+        MapEntry(toInt(step['week']), toDouble(step['dose'])),
+  ]..sort((a, b) => a.key.compareTo(b.key));
+}
+
+String stepsLabel(Json protocol) => stepsOf(protocol)
+    .map(
+      (step) =>
+          'ab Woche ${step.key} ${fmtNum(step.value, 3)} ${str(protocol['unit'])}',
+    )
+    .join(', ');
+
+/// Tage, die das Vial laut eigener Angabe noch haltbar ist; negativ, wenn die
+/// Frist abgelaufen ist; null ohne Angabe.
+int? vialDaysLeft(Json vial, String today) {
+  final days = toInt(vial['days']);
+  final mixed = str(vial['mixed']);
+  if (days <= 0 || tryParseYmd(mixed) == null) return null;
+  return dayDiff(today, addDays(mixed, days));
+}

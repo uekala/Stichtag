@@ -13,7 +13,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
@@ -22,7 +22,7 @@ WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "www")
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 DEV = os.environ.get("DEV") == "1"
 DEV_MOBILE = os.environ.get("DEV_MOBILE") == "1"
-VERSION = "1.2.2"
+VERSION = "1.3.0"
 PORT = int(os.environ.get("PORT", "8099"))
 MOBILE_PORT = int(os.environ.get("MOBILE_PORT", "8098"))
 PAIRING_TTL = 600
@@ -240,6 +240,39 @@ def is_due(p, day):
         return False
 
 
+def dose_on(p, day):
+    """Dosis an diesem Tag: die Grunddosis oder die letzte erreichte Dosisstufe."""
+    dose = p.get("dose")
+    try:
+        week = (day - date.fromisoformat(str(p.get("start", "")))).days // 7 + 1
+        best = 0
+        for step in p.get("steps") or []:
+            at = int(step.get("week") or 0)
+            if best < at <= week and float(step.get("dose") or 0) > 0:
+                best, dose = at, step.get("dose")
+    except (TypeError, ValueError, AttributeError):
+        pass
+    return dose
+
+
+def adherence(state, day):
+    due = [p for p in state["protocols"] if is_due(p, day)]
+    day_s = day.isoformat()
+    logged = {l.get("pid") for l in state["logs"] if str(l.get("ts", ""))[:10] == day_s}
+    return len(due), len([p for p in due if p.get("id") in logged])
+
+
+def vial_expiry(vial):
+    """Tag, bis zu dem das Vial laut eigener Angabe haltbar ist; sonst None."""
+    try:
+        days = int(vial.get("days") or 0)
+        if days <= 0:
+            return None
+        return date.fromisoformat(str(vial.get("mixed", ""))) + timedelta(days=days)
+    except (TypeError, ValueError):
+        return None
+
+
 def next_site(state):
     last = {}
     for log in state["logs"]:
@@ -283,7 +316,7 @@ def mark_done(pid, now=None):
             return False
         state["logs"].append({
             "id": secrets.token_hex(6), "ts": now.strftime("%Y-%m-%dT%H:%M"), "pid": pid,
-            "name": protocol.get("name"), "dose": protocol.get("dose"), "unit": protocol.get("unit"),
+            "name": protocol.get("name"), "dose": dose_on(protocol, now.date()), "unit": protocol.get("unit"),
             "site": next_site(state), "feel": 0, "note": "", "vialId": protocol.get("vialId") or "",
         })
         state["rev"] = int(state.get("rev") or 0) + 1
@@ -372,7 +405,7 @@ def check_reminders(now=None, sender=send):
     except (TypeError, ValueError):
         followup = 0
     changed = False
-    for key in [k for k in notified if not k.startswith(day_s) and not k.startswith("vial|")]:
+    for key in [k for k in notified if not k.startswith(day_s) and not k.startswith("vial")]:
         del notified[key]
         changed = True
     if service:
@@ -390,9 +423,9 @@ def check_reminders(now=None, sender=send):
             key = day_s + "|" + str(p.get("id"))
             rec = notified.get(key)
             if rec is None:
-                text = "%s ist fällig: %s %s" % (p.get("name"), fmt(p.get("dose")), p.get("unit"))
+                text = "%s ist fällig: %s %s" % (p.get("name"), fmt(dose_on(p, day)), p.get("unit"))
             elif followup > 0 and rec["count"] == 1 and now.timestamp() - rec["last"] >= followup * 60:
-                text = "%s ist noch offen: %s %s" % (p.get("name"), fmt(p.get("dose")), p.get("unit"))
+                text = "%s ist noch offen: %s %s" % (p.get("name"), fmt(dose_on(p, day)), p.get("unit"))
             else:
                 continue
             site = next_site(state)
@@ -430,9 +463,92 @@ def check_reminders(now=None, sender=send):
                 continue
             notified[key] = {"count": 1, "last": now.timestamp()}
             changed = True
+        # Haltbarkeit: einmal melden, sobald die selbst eingetragene Frist abgelaufen ist.
+        for vial in state["vials"]:
+            key = "vialexp|" + str(vial.get("id"))
+            until = None if vial.get("demo") else vial_expiry(vial)
+            if not warn or until is None or day <= until:
+                if key in notified:
+                    del notified[key]
+                    changed = True
+                continue
+            if key in notified:
+                continue
+            text = "Vial %s ist seit dem %s nicht mehr haltbar." % (vial.get("name"), until.strftime("%d.%m."))
+            try:
+                sender(service, text, "peptid-vialexp-" + str(vial.get("id")), None)
+            except Exception as e:
+                print("Haltbarkeitswarnung fehlgeschlagen:", e, flush=True)
+                continue
+            notified[key] = {"count": 1, "last": now.timestamp()}
+            changed = True
     if changed:
         with lock:
             write_json(NOTIFIED_FILE, notified)
+
+
+# ---------- Sensoren für Home Assistant ----------
+
+WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+_published = {}
+
+
+def sensor_values(state, now):
+    """Die drei Sensoren als {entity_id: (Zustand, Attribute)}."""
+    day = now.date()
+    day_s = day.isoformat()
+    due = [p for p in state["protocols"] if is_due(p, day)]
+    logged = {l.get("pid") for l in state["logs"] if str(l.get("ts", ""))[:10] == day_s}
+    open_today = [p for p in due if p.get("id") not in logged]
+    total_due = total_done = 0
+    for back in range(7):
+        d, n = adherence(state, day - timedelta(days=back))
+        total_due += d
+        total_done += n
+    nxt, attrs = "Keine", {}
+    candidates = sorted(open_today, key=lambda p: str(p.get("time") or "99:99"))
+    when = day
+    if not candidates:
+        for ahead in range(1, 15):
+            when = day + timedelta(days=ahead)
+            candidates = sorted([p for p in state["protocols"] if is_due(p, when)],
+                                key=lambda p: str(p.get("time") or "99:99"))
+            if candidates:
+                break
+    if candidates:
+        p = candidates[0]
+        label = "Heute" if when == day else "Morgen" if when == day + timedelta(days=1) \
+            else "%s, %s" % (WEEKDAYS[when.weekday()], when.strftime("%d.%m."))
+        nxt = " ".join(x for x in (label, str(p.get("time") or ""), str(p.get("name"))) if x)
+        attrs = {"peptid": p.get("name"), "dosis": "%s %s" % (fmt(dose_on(p, when)), p.get("unit")),
+                 "datum": when.isoformat(), "uhrzeit": p.get("time") or None}
+    return {
+        "sensor.stichtag_offene_dosen": (len(open_today), {
+            "friendly_name": "Stichtag offene Dosen", "icon": "mdi:needle",
+            "unit_of_measurement": "Dosen", "faellig": len(due), "erledigt": len(due) - len(open_today),
+            "offen": [p.get("name") for p in open_today]}),
+        "sensor.stichtag_einhaltung_7_tage": (
+            round(total_done / total_due * 100) if total_due else "unknown", {
+                "friendly_name": "Stichtag Einhaltung 7 Tage", "icon": "mdi:calendar-check",
+                "unit_of_measurement": "%", "faellig": total_due, "erledigt": total_done}),
+        "sensor.stichtag_naechste_dosis": (nxt, dict(
+            {"friendly_name": "Stichtag nächste Dosis", "icon": "mdi:calendar-clock"}, **attrs)),
+    }
+
+
+def publish_sensors(now=None, post=None):
+    """Schreibt geänderte Sensorwerte nach Home Assistant, spätestens alle 15 Minuten erneut."""
+    now = now or datetime.now()
+    post = post or (lambda entity, body: supervisor("POST", "/core/api/states/" + entity, body))
+    with lock:
+        state = load_state()
+    for entity, (value, attributes) in sensor_values(state, now).items():
+        body = {"state": value, "attributes": attributes}
+        last = _published.get(entity)
+        if last and last[0] == body and now.timestamp() - last[1] < 900:
+            continue
+        post(entity, body)
+        _published[entity] = (body, now.timestamp())
 
 
 # ---------- „Erledigt“ aus der Benachrichtigung (WebSocket zu Home Assistant) ----------
@@ -562,6 +678,11 @@ def reminder_loop():
             check_reminders()
         except Exception as e:
             print("Fehler in der Erinnerungsschleife:", e, flush=True)
+        if TOKEN:
+            try:
+                publish_sensors()
+            except Exception as e:
+                print("Sensoren konnten nicht aktualisiert werden:", e, flush=True)
         time.sleep(30)
 
 

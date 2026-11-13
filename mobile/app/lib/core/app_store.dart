@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -11,13 +12,18 @@ typedef ApiFactory = StichtagApi Function(String serverUrl, String? token);
 
 /// Hält Kopplung und Datenstand und gleicht Änderungen mit dem Server ab.
 class AppStore extends ChangeNotifier {
-  AppStore({required this.sessionStore, ApiFactory? apiFactory})
-    : _apiFactory =
+  AppStore({
+    required this.sessionStore,
+    StateCache? stateCache,
+    ApiFactory? apiFactory,
+  }) : _cache = stateCache ?? InMemoryStateCache(),
+       _apiFactory =
           apiFactory ??
           ((serverUrl, token) =>
               HttpStichtagApi(serverUrl: serverUrl, token: token));
 
   final SessionStore sessionStore;
+  final StateCache _cache;
   final ApiFactory _apiFactory;
 
   Session? session;
@@ -46,10 +52,39 @@ class AppStore extends ChangeNotifier {
     } on Object {
       session = null;
     }
+    if (session != null) await _restore();
     ready = true;
     notifyListeners();
-    if (session != null) await refresh();
+    if (session != null) await resume();
   }
+
+  /// Zeigt sofort den zuletzt gespeicherten Stand, auch ohne Verbindung.
+  Future<void> _restore() async {
+    try {
+      final encoded = await _cache.read();
+      if (encoded == null) return;
+      final data = jsonDecode(encoded);
+      if (data is! Map) return;
+      state = normalizeState(data['state']);
+      _dirty = data['dirty'] == true;
+      loadedOnce = true;
+    } on Object {
+      // Ein unlesbarer Zwischenspeicher wird beim nächsten Laden ersetzt.
+    }
+  }
+
+  Future<void> _persist() async {
+    try {
+      await _cache.write(
+        jsonEncode(<String, dynamic>{'state': state, 'dirty': _dirty}),
+      );
+    } on Object {
+      // Ohne Zwischenspeicher läuft die App weiter, nur nicht ohne Verbindung.
+    }
+  }
+
+  /// Beim Start und beim Zurückkehren in die App: erst Offenes senden, sonst neu laden.
+  Future<void> resume() => _dirty ? _flush() : refresh();
 
   Future<void> pair(PairingPayload payload, String deviceName) async {
     final response = await _apiFactory(
@@ -80,11 +115,14 @@ class AppStore extends ChangeNotifier {
       state = normalizeState(await _client.getState());
       loadedOnce = true;
       error = null;
+      await _persist();
     } on ApiException catch (e) {
       if (e.status == 401) {
         await _forget();
       } else {
-        error = e.message;
+        error = loadedOnce
+            ? '${e.message} Du siehst den zuletzt geladenen Stand.'
+            : e.message;
       }
     }
     loading = false;
@@ -96,7 +134,7 @@ class AppStore extends ChangeNotifier {
     edit(state);
     _dirty = true;
     notifyListeners();
-    unawaited(_flush());
+    unawaited(_persist().then((_) => _flush()));
   }
 
   Future<void> retry() => _flush();
@@ -127,10 +165,12 @@ class AppStore extends ChangeNotifier {
         await _forget();
       } else {
         _dirty = true;
-        error = '${e.message} Die Änderung ist noch nicht gespeichert.';
+        error =
+            '${e.message} Die Änderung ist auf dem Handy gesichert und wird gesendet, sobald der Server erreichbar ist.';
       }
     }
     _saving = false;
+    await _persist();
     notifyListeners();
     if (_dirty && !failed) unawaited(_flush());
   }
@@ -154,6 +194,7 @@ class AppStore extends ChangeNotifier {
     loadedOnce = false;
     state = blankState();
     error = null;
+    await _cache.clear();
     await sessionStore.clear();
   }
 }

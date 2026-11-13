@@ -8,7 +8,14 @@ import 'features/pairing_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(StichtagApp(store: AppStore(sessionStore: SecureSessionStore())));
+  runApp(
+    StichtagApp(
+      store: AppStore(
+        sessionStore: SecureSessionStore(),
+        stateCache: SecureStateCache(),
+      ),
+    ),
+  );
 }
 
 ThemeData buildTheme(Brightness brightness) => ThemeData(
@@ -47,7 +54,7 @@ class _StichtagAppState extends State<StichtagApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) widget.store.refresh();
+    if (state == AppLifecycleState.resumed) widget.store.resume();
   }
 
   @override

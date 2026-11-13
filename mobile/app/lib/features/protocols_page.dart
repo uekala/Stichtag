@@ -50,6 +50,11 @@ class ProtocolsPage extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(_summary(protocol)),
                   Text(_period(protocol), style: theme.textTheme.bodySmall),
+                  if (stepsOf(protocol).isNotEmpty)
+                    Text(
+                      'Dosisstufen: ${stepsLabel(protocol)}',
+                      style: theme.textTheme.bodySmall,
+                    ),
                   Wrap(
                     alignment: WrapAlignment.end,
                     children: [

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0
+
+- Dosisstufen je Protokoll: Ab einer Woche gilt eine neue Dosis; Heute, Erinnerungen und „Erledigt“ rechnen damit
+- Vials haben eine Haltbarkeit in Tagen, mit Hinweis unter Heute und einer Warnung, wenn die Frist abgelaufen ist
+- Drei Sensoren für Home Assistant: offene Dosen, Einhaltung über 7 Tage, nächste Dosis
+
 ## 1.2.2
 
 - Das Feld „Peptid“ schlägt eigene und gängige Namen vor

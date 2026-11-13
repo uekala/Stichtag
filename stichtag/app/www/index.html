@@ -155,7 +155,7 @@ const LS='peptid-tracker-v1';
 function blank(){return{v:1,rev:0,demo:false,protocols:[],logs:[],vials:[],body:[],sites:DEFAULT_SITES.slice(),settings:{notify:'',followup:0,lowvial:true}}}
 function demoState(){
   const t=today(),s=blank();s.demo=true;
-  const v={id:uid(),demo:true,name:'Beispiel A',mg:5,ml:2,mixed:addDays(t,-6)};
+  const v={id:uid(),demo:true,name:'Beispiel A',mg:5,ml:2,mixed:addDays(t,-6),days:28};
   const a={id:uid(),demo:true,name:'Beispiel A',dose:250,unit:'mcg',type:'daily',n:2,days:[],start:addDays(t,-6),weeks:8,time:'08:00',active:true,vialId:v.id};
   const b={id:uid(),demo:true,name:'Beispiel B',dose:2,unit:'mg',type:'weekdays',n:2,days:[parseYmd(t).getDay()],start:addDays(t,-21),weeks:0,time:'20:00',active:true,vialId:''};
   s.vials=[v];s.protocols=[a,b];
@@ -222,6 +222,9 @@ function isDue(p,day){
   if(p.type==='interval')return diff%Math.max(1,p.n||1)===0;
   return (p.days||[]).includes(parseYmd(day).getDay());
 }
+function doseOn(p,day){let dose=p.dose,best=0;const w=Math.floor(dayDiff(p.start,day)/7)+1;(p.steps||[]).forEach(x=>{if(x.week>best&&x.week<=w&&x.dose>0){best=x.week;dose=x.dose}});return dose}
+const stepsLabel=p=>(p.steps||[]).slice().sort((a,b)=>a.week-b.week).map(x=>'ab Woche '+x.week+' '+fmt(x.dose,3)+' '+p.unit).join(', ');
+function vialDaysLeft(v,t){return v.days>0&&v.mixed?dayDiff(t,addDays(v.mixed,v.days)):null}
 const logsOn=day=>state.logs.filter(l=>l.ts.slice(0,10)===day);
 function freqLabel(p){
   if(p.type==='daily')return'täglich';
@@ -264,12 +267,13 @@ function vHeute(){
   let week='';for(let i=6;i>=0;i--){const d=addDays(t,-i),a=adherence(d);const c=!a.due?'':a.done===a.due?'full':a.done>0?'part':(i===0?'':'miss');week+=`<div class="day"><span class="dot ${c}" title="${a.done} von ${a.due}"></span>${WD[parseYmd(d).getDay()]}</div>`}
   const cards=due.map(p=>{const l=tl.find(x=>x.pid===p.id);const cyc=p.weeks>0?` · Tag ${dayDiff(p.start,t)+1} von ${p.weeks*7}`:'';
     return `<div class="card ${l?'done':'open'}"><div class="row"><h3>${esc(p.name)}</h3><span class="pill ${l?'ok':'warn'}">${l?'Erledigt':'Offen'}</span></div>
-    <span><span class="num">${fmt(p.dose,3)} ${esc(p.unit)}</span> <span class="muted">${p.time?'· '+esc(p.time)+' Uhr':''}${cyc}</span></span>
+    <span><span class="num">${fmt(doseOn(p,t),3)} ${esc(p.unit)}</span> <span class="muted">${p.time?'· '+esc(p.time)+' Uhr':''}${cyc}</span></span>
     ${l?`<div class="row"><span class="muted">${esc(l.ts.slice(11))} Uhr${l.site?' · '+esc(l.site):''}</span><button class="ghost" data-act="edit-log" data-id="${l.id}">Bearbeiten</button></div>`
       :`<div class="actions"><button data-act="log" data-pid="${p.id}">Anpassen</button><button class="primary" data-act="quick" data-pid="${p.id}">Erledigt</button></div>`}</div>`}).join('');
   const extra=tl.filter(l=>!due.some(p=>p.id===l.pid)).map(l=>`<div class="card done"><div class="row"><h3>${esc(l.name)}</h3><span class="muted">${esc(l.ts.slice(11))} Uhr</span></div><div class="row"><span class="num">${fmt(l.dose,3)} ${esc(l.unit)}</span><button class="ghost" data-act="edit-log" data-id="${l.id}">Bearbeiten</button></div></div>`).join('');
-  const low=state.vials.map(v=>({v,r:vialLeft(v)})).filter(x=>x.r.total>0&&x.r.pct<20).map(x=>`<div class="card alert"><div class="row"><span><strong>${esc(x.v.name)}</strong> ${x.r.left<=0?'ist leer':'ist fast leer'}</span><span class="num">${fmt(x.r.left/1000,3)} mg übrig</span></div></div>`).join('');
-  let up='';for(let i=1;i<=7;i++){const d=addDays(t,i),ps=state.protocols.filter(p=>isDue(p,d));if(ps.length)up+=`<div class="up-row"><span class="when">${i===1?'Morgen':deDate(d).slice(0,10)}</span><span>${ps.map(p=>esc(p.name)+' <span class="muted num">'+fmt(p.dose,3)+' '+esc(p.unit)+'</span>').join(', ')}</span></div>`}
+  const low=state.vials.map(v=>({v,r:vialLeft(v)})).filter(x=>x.r.total>0&&x.r.pct<20).map(x=>`<div class="card alert"><div class="row"><span><strong>${esc(x.v.name)}</strong> ${x.r.left<=0?'ist leer':'ist fast leer'}</span><span class="num">${fmt(x.r.left/1000,3)} mg übrig</span></div></div>`).join('')
+    +state.vials.filter(v=>{const d=vialDaysLeft(v,t);return d!==null&&d<0}).map(v=>`<div class="card alert"><span><strong>${esc(v.name)}</strong> ist seit ${deDate(addDays(v.mixed,v.days))} nicht mehr haltbar</span></div>`).join('');
+  let up='';for(let i=1;i<=7;i++){const d=addDays(t,i),ps=state.protocols.filter(p=>isDue(p,d));if(ps.length)up+=`<div class="up-row"><span class="when">${i===1?'Morgen':deDate(d).slice(0,10)}</span><span>${ps.map(p=>esc(p.name)+' <span class="muted num">'+fmt(doseOn(p,d),3)+' '+esc(p.unit)+'</span>').join(', ')}</span></div>`}
   return `<section><div class="row"><h2>${deDate(t)}</h2><button data-act="log" data-pid="">Freie Dosis eintragen</button></div>
   <div class="summary"><div class="card"><div class="ringrow">${ring(done,due.length)}<div><span class="muted">Heute erledigt</span><br><span class="big">${done} / ${due.length}</span></div></div></div>
   <div class="card"><span class="muted">Nächste Stelle laut Rotation</span><strong>${esc(nextSite()||'Keine Stellen angelegt')}</strong></div></div>
@@ -315,6 +319,7 @@ function vPlan(){
     return `<div class="card"><div class="row"><h3>${esc(p.name)}</h3><span class="pill ${st[0]}">${st[1]}</span></div>
     <span><span class="num">${fmt(p.dose,3)} ${esc(p.unit)}</span> <span class="muted">· ${esc(freqLabel(p))}${p.time?' · '+esc(p.time)+' Uhr':''}</span></span>
     <span class="muted">Start ${deDate(p.start)}${p.weeks>0?' · '+p.weeks+' Wochen':' · ohne Enddatum'}</span>
+    ${(p.steps||[]).length?`<span class="muted">Dosisstufen: ${esc(stepsLabel(p))}</span>`:''}
     <div class="actions"><button class="ghost" data-act="toggle-p" data-id="${p.id}">${p.active?'Pausieren':'Fortsetzen'}</button><button class="ghost" data-act="edit-p" data-id="${p.id}">Bearbeiten</button><button class="ghost danger" data-act="del" data-kind="protocols" data-id="${p.id}">Löschen</button></div></div>`}).join('');
   return `<section><div class="row"><h2>Protokolle</h2><button class="primary" data-act="edit-p" data-id="">Neues Protokoll</button></div>${list||`<div class="card"><span class="muted">Noch kein Protokoll angelegt.</span></div>`}</section>`;
 }
@@ -366,7 +371,7 @@ function vVials(){
     return `<div class="card"><div class="row"><h3>${esc(v.name)}</h3><span class="pill ${r.left<=0?'crit':low?'warn':'ok'}">${r.left<=0?'Leer':low?'Fast leer':'Vorrat ok'}</span></div>
     <div class="bar ${low?'low':''}"><i style="width:${r.pct.toFixed(1)}%"></i></div>
     <div class="row"><span class="num">${fmt(r.left/1000,3)} von ${fmt(v.mg,3)} mg übrig</span><span class="muted">${v.ml?fmt(v.ml)+' ml Wasser · '+fmt(v.mg*1000/v.ml,0)+' mcg/ml':'nicht angemischt'}</span></div>
-    <span class="muted">${v.mixed?'Angemischt am '+deDate(v.mixed):''}</span>
+    <span class="muted">${v.mixed?'Angemischt am '+deDate(v.mixed):''}${(d=>d===null?'':d<0?' · <span class="pill crit">Nicht mehr haltbar</span>':' · noch '+d+(d===1?' Tag':' Tage')+' haltbar')(vialDaysLeft(v,today()))}</span>
     <div class="actions"><button class="ghost" data-act="vial-calc" data-id="${v.id}">In Rechner übernehmen</button><button class="ghost" data-act="edit-v" data-id="${v.id}">Bearbeiten</button><button class="ghost danger" data-act="del" data-kind="vials" data-id="${v.id}">Löschen</button></div></div>`}).join('');
   return `<section><div class="row"><h2>Vials</h2><button class="primary" data-act="edit-v" data-id="">Neues Vial</button></div>${list||`<div class="card"><span class="muted">Noch kein Vial angelegt.</span></div>`}
   <span class="muted">Der Vorrat sinkt mit jedem Eintrag, dem du dieses Vial zuordnest (nur mcg und mg).</span></section>
@@ -410,7 +415,7 @@ function dlgLog(pid,lid){
   const l=state.logs.find(x=>x.id===lid),p=l||state.protocols.find(x=>x.id===pid)||{},site=l?l.site:nextSite(),feel=l?+l.feel||0:0;
   openDlg('log',`<h2>${l?'Eintrag bearbeiten':'Dosis eintragen'}</h2><input type="hidden" id="f-pid" value="${esc(l?l.pid:pid||'')}"><input type="hidden" id="f-lid" value="${esc(l?l.id:'')}">
   <label>Peptid<input id="f-name" required value="${esc(p.name||'')}" list="f-names" placeholder="Name eintippen oder aus der Liste wählen"></label><datalist id="f-names">${nameOpts()}</datalist>
-  <div class="grid3"><label>Dosis<input id="f-dose" inputmode="decimal" required value="${p.dose??''}"></label><label>Einheit<select id="f-unit">${unitOpts(p.unit||'mcg')}</select></label></div>
+  <div class="grid3"><label>Dosis<input id="f-dose" inputmode="decimal" required value="${l?l.dose:(p.id?doseOn(p,today()):'')}"></label><label>Einheit<select id="f-unit">${unitOpts(p.unit||'mcg')}</select></label></div>
   <label>Zeitpunkt<input id="f-ts" type="datetime-local" required value="${esc(l?l.ts:nowLocal())}"></label>
   <div class="grid2"><label>Stelle<select id="f-site"><option value="">Keine Angabe</option>${[...new Set([...state.sites,site].filter(Boolean))].map(s=>`<option ${s===site?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
   <label>Vial<select id="f-vial">${vialOpts(p.vialId||'')}</select></label></div>
@@ -419,7 +424,7 @@ function dlgLog(pid,lid){
 }
 function quickLog(pid){
   const p=state.protocols.find(x=>x.id===pid);if(!p)return;
-  const id=uid();state.logs.push({id,ts:nowLocal(),pid:p.id,name:p.name,dose:p.dose,unit:p.unit,site:nextSite(),feel:0,note:'',vialId:p.vialId||''});
+  const id=uid();state.logs.push({id,ts:nowLocal(),pid:p.id,name:p.name,dose:doseOn(p,today()),unit:p.unit,site:nextSite(),feel:0,note:'',vialId:p.vialId||''});
   save();render();toast('Eingetragen: '+p.name,id);
 }
 let toastTimer=null,undoId='';
@@ -433,16 +438,20 @@ function dlgProtocol(id){
   <label id="f-n-wrap">Abstand in Tagen<input id="f-n" inputmode="numeric" value="${p.n||2}"></label>
   <div class="checks" id="f-days-wrap">${[1,2,3,4,5,6,0].map(d=>`<label><input type="checkbox" id="f-day-${d}" value="${d}" ${(p.days||[]).includes(d)?'checked':''}>${WD[d]}</label>`).join('')}</div>
   <div class="grid2"><label>Startdatum<input id="f-start" type="date" required value="${esc(p.start)}"></label><label>Uhrzeit (optional)<input id="f-time" type="time" value="${esc(p.time||'')}"></label></div>
-  <div class="grid2"><label>Zyklus in Wochen (leer = offen)<input id="f-weeks" inputmode="numeric" value="${p.weeks||''}"></label><label>Standard-Vial<select id="f-vial">${vialOpts(p.vialId||'')}</select></label></div>${foot('Speichern')}`);
+  <div class="grid2"><label>Zyklus in Wochen (leer = offen)<input id="f-weeks" inputmode="numeric" value="${p.weeks||''}"></label><label>Standard-Vial<select id="f-vial">${vialOpts(p.vialId||'')}</select></label></div>
+  <span class="muted">Dosisstufen (optional): Ab der angegebenen Woche gilt die neue Dosis. Woche 1 beginnt am Startdatum.</span>
+  <div id="f-steps">${(p.steps||[]).slice().sort((a,b)=>a.week-b.week).map(x=>stepRow(x.week,x.dose)).join('')}</div>
+  <div class="actions"><button type="button" data-act="add-step">Stufe hinzufügen</button></div>${foot('Speichern')}`);
   typeVis();
 }
+const stepRow=(w,d)=>`<div class="grid2 step"><label>Ab Woche<input class="s-week" inputmode="numeric" value="${w||''}"></label><label>Dosis<input class="s-dose" inputmode="decimal" value="${d||''}"></label></div>`;
 function typeVis(){const t=$('#f-type');if(!t)return;$('#f-n-wrap').classList.toggle('hide',t.value!=='interval');$('#f-days-wrap').classList.toggle('hide',t.value!=='weekdays')}
 function dlgVial(id){
   const v=state.vials.find(x=>x.id===id)||{mixed:today()};
   openDlg('vial',`<h2>${id?'Vial bearbeiten':'Neues Vial'}</h2><input type="hidden" id="f-id" value="${esc(id||'')}">
   <label>Bezeichnung<input id="f-name" required value="${esc(v.name||'')}"></label>
   <div class="grid2"><label>Inhalt (mg)<input id="f-mg" inputmode="decimal" required value="${v.mg??''}"></label><label>Wasser (ml, optional)<input id="f-ml" inputmode="decimal" value="${v.ml||''}"></label></div>
-  <label>Angemischt am<input id="f-mixed" type="date" value="${esc(v.mixed||'')}"></label>${foot('Speichern')}`);
+  <div class="grid2"><label>Angemischt am<input id="f-mixed" type="date" value="${esc(v.mixed||'')}"></label><label>Haltbar (Tage, optional)<input id="f-days" inputmode="numeric" value="${v.days||''}"></label></div>${foot('Speichern')}`);
 }
 function dlgConfirm(text,kind,id){openDlg('confirm',`<h2>${esc(text)}</h2><input type="hidden" id="f-kind" value="${esc(kind)}"><input type="hidden" id="f-id" value="${esc(id||'')}"><div class="actions"><button type="button" data-act="close">Abbrechen</button><button class="primary" type="submit">Löschen</button></div>`)}
 const err=m=>{const e=$('#f-err');if(e)e.textContent=m};
@@ -458,11 +467,12 @@ form.addEventListener('submit',ev=>{
   }else if(k==='protocol'){
     const dose=num(val('f-dose')),name=val('f-name').trim(),type=val('f-type');if(!name||!(dose>0)||!val('f-start'))return err('Bitte Peptid, Dosis und Startdatum angeben.');
     const days=[0,1,2,3,4,5,6].filter(d=>$('#f-day-'+d).checked);if(type==='weekdays'&&!days.length)return err('Bitte mindestens einen Wochentag wählen.');
-    const o={name,dose,unit:val('f-unit'),type,n:Math.max(1,Math.round(num(val('f-n')))||1),days,start:val('f-start'),weeks:Math.max(0,Math.round(num(val('f-weeks')))||0),time:val('f-time'),vialId:val('f-vial')};
+    const o={name,dose,unit:val('f-unit'),type,n:Math.max(1,Math.round(num(val('f-n')))||1),days,start:val('f-start'),weeks:Math.max(0,Math.round(num(val('f-weeks')))||0),time:val('f-time'),vialId:val('f-vial'),
+      steps:[...form.querySelectorAll('.step')].map(r=>({week:Math.round(num(r.querySelector('.s-week').value)),dose:num(r.querySelector('.s-dose').value)})).filter(x=>x.week>1&&x.dose>0).sort((a,b)=>a.week-b.week)};
     const ex=state.protocols.find(p=>p.id===val('f-id'));if(ex)Object.assign(ex,o);else state.protocols.push({id:uid(),active:true,...o});
   }else if(k==='vial'){
     const mg=num(val('f-mg')),name=val('f-name').trim();if(!name||!(mg>0))return err('Bitte Bezeichnung und Inhalt in mg angeben.');
-    const o={name,mg,ml:num(val('f-ml'))>0?num(val('f-ml')):0,mixed:val('f-mixed')};
+    const o={name,mg,ml:num(val('f-ml'))>0?num(val('f-ml')):0,mixed:val('f-mixed'),days:Math.max(0,Math.round(num(val('f-days')))||0)};
     const ex=state.vials.find(v=>v.id===val('f-id'));if(ex)Object.assign(ex,o);else state.vials.push({id:uid(),...o});
   }else if(k==='body'){
     const g=i=>{const n=num(val(i));return n>0?n:0},o={date:val('f-date'),weight:g('f-weight'),waist:g('f-waist'),fat:g('f-fat'),note:val('f-note').trim()};
@@ -485,6 +495,7 @@ document.addEventListener('click',async e=>{
   else if(a==='undo'){state.logs=state.logs.filter(l=>l.id!==undoId);$('#toast').classList.add('hide');save();render()}
   else if(a==='edit-p')dlgProtocol(id);
   else if(a==='edit-v')dlgVial(id);
+  else if(a==='add-step')$('#f-steps').insertAdjacentHTML('beforeend',stepRow('',''));
   else if(a==='edit-b')dlgBody(id);
   else if(a==='toggle-p'){const p=state.protocols.find(x=>x.id===id);if(p){p.active=!p.active;save();render()}}
   else if(a==='del')dlgConfirm({protocols:'Dieses Protokoll löschen? Der Verlauf bleibt erhalten.',logs:'Diesen Eintrag löschen?',vials:'Dieses Vial löschen?',body:'Diese Messung löschen?'}[b.dataset.kind],b.dataset.kind,id);

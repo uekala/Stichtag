@@ -5,11 +5,11 @@
 Die Oberfläche öffnest du über den Eintrag **Stichtag** in der Seitenleiste.
 
 - **Heute**: fällige Dosen, Eintragen, nächste Injektionsstelle laut Rotation
-- **Protokolle**: Peptid, Dosis, Rhythmus, Startdatum, Uhrzeit, Zykluslänge
+- **Protokolle**: Peptid, Dosis, Rhythmus, Startdatum, Uhrzeit, Zykluslänge, optional Dosisstufen ab einer Woche
 - **Verlauf**: alle Einträge, filterbar nach Peptid, mit Bearbeiten
 - **Auswertung**: Einhaltung über 8 Wochen, Zahlen je Peptid, Befinden, Stellen
 - **Körper**: Gewicht, Bauchumfang, Körperfett mit Verlaufskurve
-- **Vials & Rechner**: Vorrat pro Vial und Misch-Rechner für U-100-Spritzen
+- **Vials & Rechner**: Vorrat und Haltbarkeit pro Vial, Misch-Rechner für U-100-Spritzen
 - **Daten**: Erinnerungen, Handy-App, Injektionsstellen, Export, Import
 
 ## Erinnerungen
@@ -23,7 +23,21 @@ Erinnert wird zur Uhrzeit des Protokolls, solange die Dosis an dem Tag noch nich
 Läuft die Erinnerung über die Home-Assistant-App (`notify.mobile_app_…`), hat sie den Knopf **Erledigt**. Ein Tipp
 darauf trägt die Dosis mit den Vorgaben des Protokolls und der nächsten Stelle der Rotation ein.
 
-Fällt ein Vial unter 20 % Rest, kommt einmal eine Warnung. Das lässt sich unter **Daten → Erinnerungen** abschalten.
+Fällt ein Vial unter 20 % Rest oder läuft seine eingetragene Haltbarkeit ab, kommt jeweils einmal eine Warnung. Das lässt sich unter **Daten → Erinnerungen** abschalten.
+
+## Sensoren
+
+Stichtag legt drei Sensoren in Home Assistant an und hält sie aktuell:
+
+| Sensor | Zustand | Attribute |
+|---|---|---|
+| `sensor.stichtag_offene_dosen` | Zahl der heute noch offenen Dosen | `faellig`, `erledigt`, `offen` (Namen) |
+| `sensor.stichtag_einhaltung_7_tage` | Einhaltung der letzten 7 Tage in Prozent | `faellig`, `erledigt` |
+| `sensor.stichtag_naechste_dosis` | zum Beispiel „Heute 20:00 Name“ | `peptid`, `dosis`, `datum`, `uhrzeit` |
+
+Die Sensoren eignen sich für Dashboards und Automationen. Sie haben keine eindeutige ID und lassen sich deshalb
+nicht in der Oberfläche umbenennen. Nach einem Neustart von Home Assistant erscheinen sie innerhalb einer Minute
+wieder.
 
 ## Handy-App
 

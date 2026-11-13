@@ -91,3 +91,52 @@ class InMemorySessionStore implements SessionStore {
     _session = null;
   }
 }
+
+/// Hält den zuletzt geladenen Stand, damit die App ohne Verbindung etwas zeigt.
+abstract interface class StateCache {
+  Future<String?> read();
+
+  Future<void> write(String encoded);
+
+  Future<void> clear();
+}
+
+/// Legt den Stand verschlüsselt im Schlüsselspeicher des Handys ab.
+class SecureStateCache implements StateCache {
+  SecureStateCache({FlutterSecureStorage? storage})
+    : _storage = storage ?? const FlutterSecureStorage();
+
+  static const _key = 'stichtag.mobile.state.v1';
+
+  final FlutterSecureStorage _storage;
+
+  @override
+  Future<String?> read() => _storage.read(key: _key);
+
+  @override
+  Future<void> write(String encoded) =>
+      _storage.write(key: _key, value: encoded);
+
+  @override
+  Future<void> clear() => _storage.delete(key: _key);
+}
+
+/// Für Tests.
+class InMemoryStateCache implements StateCache {
+  InMemoryStateCache([this.encoded]);
+
+  String? encoded;
+
+  @override
+  Future<String?> read() async => encoded;
+
+  @override
+  Future<void> write(String value) async {
+    encoded = value;
+  }
+
+  @override
+  Future<void> clear() async {
+    encoded = null;
+  }
+}

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:stichtag_mobile/core/api.dart';
 import 'package:stichtag_mobile/core/app_store.dart';
@@ -12,11 +14,21 @@ class FakeApi implements StichtagApi {
   Json server;
   int puts = 0;
 
+  bool offline = false;
+
+  void _check() {
+    if (offline) throw const ApiException('Der Server ist nicht erreichbar.');
+  }
+
   @override
-  Future<Json> getState() async => normalizeState(server);
+  Future<Json> getState() async {
+    _check();
+    return normalizeState(server);
+  }
 
   @override
   Future<Json> putState(Json state) async {
+    _check();
     puts++;
     if (toInt(state['rev']) != toInt(server['rev'])) {
       throw ConflictException(normalizeState(server));
@@ -154,5 +166,48 @@ void main() {
     expect(sitesOf(store.state), ['Nur diese']);
     expect(store.error, isNotNull);
     expect(store.hasUnsaved, isFalse);
+  });
+
+  test('ohne Verbindung zeigt die App den letzten Stand und sendet später', () async {
+    final api = FakeApi(<String, dynamic>{'rev': 5})..offline = true;
+    final cache = InMemoryStateCache(
+      jsonEncode(<String, dynamic>{
+        'state': <String, dynamic>{
+          'rev': 5,
+          'sites': ['Aus dem Speicher'],
+        },
+        'dirty': false,
+      }),
+    );
+    final store = AppStore(
+      sessionStore: InMemorySessionStore(session),
+      stateCache: cache,
+      apiFactory: (_, _) => api,
+    );
+    await store.init();
+    expect(store.loadedOnce, isTrue);
+    expect(sitesOf(store.state), ['Aus dem Speicher']);
+    expect(store.error, contains('zuletzt geladenen Stand'));
+
+    store.change((state) => state['sites'] = <String>['Unterwegs geändert']);
+    await Future<void>.delayed(Duration.zero);
+    expect(store.hasUnsaved, isTrue);
+    expect(jsonDecode(cache.encoded!)['dirty'], isTrue);
+
+    // Ein neuer Start ohne Verbindung behält die offene Änderung.
+    final restarted = AppStore(
+      sessionStore: InMemorySessionStore(session),
+      stateCache: cache,
+      apiFactory: (_, _) => api,
+    );
+    await restarted.init();
+    expect(sitesOf(restarted.state), ['Unterwegs geändert']);
+    expect(restarted.hasUnsaved, isTrue);
+
+    api.offline = false;
+    await restarted.resume();
+    expect(restarted.hasUnsaved, isFalse);
+    expect(sitesOf(api.server), ['Unterwegs geändert']);
+    expect(jsonDecode(cache.encoded!)['dirty'], isFalse);
   });
 }

@@ -121,7 +121,12 @@ class _LogEditorState extends State<LogEditor> {
     final source = log ?? widget.protocol;
     final state = widget.store.state;
     _name = TextEditingController(text: str(source?['name']));
-    _dose = TextEditingController(text: _numText(source?['dose']));
+    final protocol = widget.protocol;
+    _dose = TextEditingController(
+      text: log == null && protocol != null
+          ? _numText(doseOn(protocol, todayYmd()))
+          : _numText(source?['dose']),
+    );
     final unit = str(source?['unit']);
     _unit = doseUnits.contains(unit) ? unit : 'mcg';
     _site = log == null ? nextSite(state) : str(log['site']);
@@ -307,6 +312,7 @@ class _ProtocolEditorState extends State<ProtocolEditor> {
   late String _start;
   late String _time;
   late String _vial;
+  final _steps = <(TextEditingController, TextEditingController)>[];
   String? _error;
   String? _nameError;
   String? _doseError;
@@ -339,6 +345,14 @@ class _ProtocolEditorState extends State<ProtocolEditor> {
         : 'daily';
     final days = p?['days'];
     _days = days is List ? days.map(toInt).toSet() : <int>{};
+    if (p != null) {
+      for (final step in stepsOf(p)) {
+        _steps.add((
+          TextEditingController(text: step.key.toString()),
+          TextEditingController(text: fmtNum(step.value, 3)),
+        ));
+      }
+    }
     final start = str(p?['start']);
     _start = tryParseYmd(start) == null ? todayYmd() : start;
     _time = str(p?['time']);
@@ -352,6 +366,10 @@ class _ProtocolEditorState extends State<ProtocolEditor> {
     _dose.dispose();
     _interval.dispose();
     _weeks.dispose();
+    for (final step in _steps) {
+      step.$1.dispose();
+      step.$2.dispose();
+    }
     super.dispose();
   }
 
@@ -380,6 +398,14 @@ class _ProtocolEditorState extends State<ProtocolEditor> {
       'weeks': max(0, toInt(_weeks.text)),
       'time': _time,
       'vialId': _vial,
+      'steps': [
+        for (final step in _steps)
+          if (toInt(step.$1.text) > 1 && toDouble(step.$2.text) > 0)
+            <String, dynamic>{
+              'week': toInt(step.$1.text),
+              'dose': toDouble(step.$2.text),
+            },
+      ]..sort((a, b) => (a['week'] as int).compareTo(b['week'] as int)),
     };
     final id = str(widget.existing?['id']);
     widget.store.change((state) {
@@ -481,6 +507,40 @@ class _ProtocolEditorState extends State<ProtocolEditor> {
         options: _vialOptions(widget.store.state),
         onChanged: (v) => setState(() => _vial = v),
       ),
+      Text(
+        'Dosisstufen (optional): Ab der angegebenen Woche gilt die neue Dosis. Woche 1 beginnt am Startdatum.',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+      for (final step in _steps)
+        Row(
+          children: [
+            Expanded(
+              child: NumField(controller: step.$1, label: 'Ab Woche'),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: NumField(controller: step.$2, label: 'Dosis'),
+            ),
+            IconButton(
+              tooltip: 'Stufe entfernen',
+              onPressed: () => setState(() => _steps.remove(step)),
+              icon: const Icon(Icons.remove_circle_outline),
+            ),
+          ],
+        ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          onPressed: () => setState(
+            () => _steps.add((
+              TextEditingController(),
+              TextEditingController(),
+            )),
+          ),
+          icon: const Icon(Icons.add),
+          label: const Text('Stufe hinzufügen'),
+        ),
+      ),
     ],
   );
 }
@@ -500,6 +560,7 @@ class _VialEditorState extends State<VialEditor> {
   late final TextEditingController _name;
   late final TextEditingController _mg;
   late final TextEditingController _ml;
+  late final TextEditingController _days;
   late String _mixed;
   String? _error;
 
@@ -510,6 +571,8 @@ class _VialEditorState extends State<VialEditor> {
     _name = TextEditingController(text: str(v?['name']));
     _mg = TextEditingController(text: _numText(v?['mg']));
     _ml = TextEditingController(text: _numText(v?['ml']));
+    final days = toInt(v?['days']);
+    _days = TextEditingController(text: days > 0 ? days.toString() : '');
     _mixed = v == null ? todayYmd() : str(v['mixed']);
   }
 
@@ -518,6 +581,7 @@ class _VialEditorState extends State<VialEditor> {
     _name.dispose();
     _mg.dispose();
     _ml.dispose();
+    _days.dispose();
     super.dispose();
   }
 
@@ -533,6 +597,7 @@ class _VialEditorState extends State<VialEditor> {
       'mg': mg,
       'ml': max(0.0, toDouble(_ml.text)),
       'mixed': _mixed,
+      'days': max(0, toInt(_days.text)),
     };
     final id = str(widget.existing?['id']);
     widget.store.change((state) {
@@ -564,6 +629,7 @@ class _VialEditorState extends State<VialEditor> {
         value: _mixed,
         onChanged: (v) => setState(() => _mixed = v),
       ),
+      NumField(controller: _days, label: 'Haltbar (Tage, optional)'),
     ],
   );
 }
