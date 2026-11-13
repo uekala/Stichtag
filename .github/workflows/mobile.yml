@@ -87,7 +87,10 @@ jobs:
       - name: Build Android APK
         # Nur zum Testen: Debug-APKs tragen den zufälligen Debug-Schlüssel des Runners
         # und lassen sich nicht über eine installierte Version installieren.
-        run: flutter build apk --debug --target-platform android-arm64 --build-number=$((GITHUB_RUN_NUMBER + 1))
+        run: |
+          VERSION=$(sed -n 's/^version: *\([0-9.]*\).*/\1/p' pubspec.yaml)
+          flutter build apk --debug --target-platform android-arm64 --build-number=$((GITHUB_RUN_NUMBER + 1)) \
+            --dart-define=STICHTAG_VERSION="$VERSION (Test)"
 
       - name: Upload Android test APK
         uses: actions/upload-artifact@v7
