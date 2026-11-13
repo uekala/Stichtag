@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stichtag</title>
+<style>
+:root{
+  /* Layout: eine schmale Spalte wie ein Laborjournal, Tabs oben, Zahlen in Mono */
+  --bg:#EEF2F1; --surface:#FBFCFC; --ink:#12201E; --muted:#5A6B68; --line:#D5DEDC;
+  --accent:#0B6E60; --accent-ink:#FFFFFF; --accent-soft:#DCEDE9;
+  --ok:#1E7A3C; --warn:#A85D00; --crit:#B3261E;
+  --font-display:'Segoe UI',system-ui,sans-serif;
+  --font-body:'Segoe UI',system-ui,sans-serif;
+  --font-mono:ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1514; --surface:#172120; --ink:#E4ECEA; --muted:#94A5A2; --line:#2A3836;
+    --accent:#5CCDB8; --accent-ink:#06211C; --accent-soft:#1D3531;
+    --ok:#6CCB86; --warn:#E3A44B; --crit:#F2877F; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1514; --surface:#172120; --ink:#E4ECEA; --muted:#94A5A2; --line:#2A3836;
+  --accent:#5CCDB8; --accent-ink:#06211C; --accent-soft:#1D3531;
+  --ok:#6CCB86; --warn:#E3A44B; --crit:#F2877F; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.45}
+.wrap{max-width:600px;margin:0 auto;padding:0 16px 64px}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:14px 0 0;border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-family:var(--font-display);font-weight:700;font-size:1.5rem;margin:0;letter-spacing:-.01em}
+.sync{font-size:.78rem;color:var(--muted)}
+nav{display:flex;gap:4px;margin-top:10px;overflow-x:auto}
+nav a{flex:0 0 auto;padding:8px 12px;text-decoration:none;color:var(--muted);font-weight:500;font-size:.95rem;border-bottom:3px solid transparent}
+nav a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent)}
+h2{font-family:var(--font-display);font-weight:700;font-size:1.15rem;margin:0;text-wrap:balance}
+h3{font-size:1rem;font-weight:600;margin:0}
+main{display:flex;flex-direction:column;gap:20px;padding-top:20px}
+section{display:flex;flex-direction:column;gap:10px}
+.row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.card.done{border-left:4px solid var(--ok)}
+.card.open{border-left:4px solid var(--warn)}
+.muted{color:var(--muted);font-size:.88rem}
+.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.big{font-family:var(--font-mono);font-size:1.6rem;font-weight:500;font-variant-numeric:tabular-nums}
+.pill{display:inline-block;font-size:.75rem;font-weight:600;padding:2px 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.pill.ok{color:var(--ok)} .pill.warn{color:var(--warn)} .pill.crit{color:var(--crit)} .pill.neutral{color:var(--muted)}
+a.btn{text-decoration:none}
+button,.btn{font:inherit;font-weight:600;font-size:.92rem;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.ghost{border-color:transparent;background:transparent;color:var(--muted);padding:6px 8px}
+button.danger{color:var(--crit)}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.banner{background:var(--accent-soft);border-radius:10px;padding:12px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:.92rem}
+.summary{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:400px){.summary{grid-template-columns:1fr}}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.day{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.72rem;color:var(--muted)}
+.dot{width:100%;height:10px;border-radius:5px;background:var(--line)}
+.dot.full{background:var(--ok)} .dot.part{background:var(--warn)} .dot.miss{background:var(--crit)}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent)}
+.bar.low>i{background:var(--warn)}
+label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;font-weight:500;color:var(--muted);min-width:0}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;min-width:0}
+textarea{min-height:90px;resize:vertical;font-family:var(--font-mono);font-size:.85rem}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:2fr 1fr;gap:10px}
+.checks{display:flex;gap:6px;flex-wrap:wrap}
+.checks label{flex-direction:row;align-items:center;gap:4px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;color:var(--ink)}
+.checks input{width:auto}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink);padding:0;width:min(520px,calc(100% - 24px));max-height:calc(100% - 24px)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog form{display:flex;flex-direction:column;gap:12px;padding:18px}
+.actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.out{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.out div{display:flex;flex-direction:column;gap:2px}
+.note{font-size:.82rem;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+.chart{width:100%;height:auto;display:block}
+.chart text{font-family:var(--font-mono);font-size:11px;fill:var(--muted)}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .line{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+.chart .area{fill:var(--accent);opacity:.12}
+.chart .pt{fill:var(--surface);stroke:var(--accent);stroke-width:2}
+.chart .end{fill:var(--accent)}
+.up{color:var(--warn)} .down{color:var(--ok)}
+.hide{display:none!important}
+@media (prefers-reduced-motion:no-preference){.bar>i{transition:width .3s}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="top"><h1>Stichtag</h1><span class="sync" id="sync">Lädt …</span></div>
+  <nav id="nav">
+    <a href="#heute">Heute</a><a href="#plan">Protokolle</a><a href="#verlauf">Verlauf</a><a href="#koerper">Körper</a><a href="#vials">Vials &amp; Rechner</a><a href="#daten">Daten</a>
+  </nav>
+</header>
+<main id="view"></main>
+</div>
+<dialog id="dlg"><form id="dlgform" method="dialog"></form></dialog>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36);
+const pad=n=>String(n).padStart(2,'0');
+const ymd=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const parseYmd=s=>{const[a,b,c]=s.split('-').map(Number);return new Date(a,b-1,c,12)};
+const dayDiff=(a,b)=>Math.round((parseYmd(b)-parseYmd(a))/864e5);
+const addDays=(s,n)=>{const d=parseYmd(s);d.setDate(d.getDate()+n);return ymd(d)};
+const today=()=>ymd(new Date());
+const nowLocal=()=>{const d=new Date();return ymd(d)+'T'+pad(d.getHours())+':'+pad(d.getMinutes())};
+const num=v=>{const n=parseFloat(String(v??'').replace(',','.'));return isFinite(n)?n:NaN};
+const fmt=(n,d=2)=>Number(n).toLocaleString('de-DE',{maximumFractionDigits:d});
+const WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
+const deDate=s=>{const d=parseYmd(s);return WD[d.getDay()]+', '+pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear()};
+const DEFAULT_SITES=['Bauch links','Bauch rechts','Oberschenkel links','Oberschenkel rechts','Flanke links','Flanke rechts'];
+const LS='peptid-tracker-v1';
+
+function blank(){return{v:1,rev:0,demo:false,protocols:[],logs:[],vials:[],body:[],sites:DEFAULT_SITES.slice(),settings:{notify:'',followup:0}}}
+function demoState(){
+  const t=today(),s=blank();s.demo=true;
+  const v={id:uid(),demo:true,name:'Beispiel A',mg:5,ml:2,mixed:addDays(t,-6)};
+  const a={id:uid(),demo:true,name:'Beispiel A',dose:250,unit:'mcg',type:'daily',n:2,days:[],start:addDays(t,-6),weeks:8,time:'08:00',active:true,vialId:v.id};
+  const b={id:uid(),demo:true,name:'Beispiel B',dose:2,unit:'mg',type:'weekdays',n:2,days:[parseYmd(t).getDay()],start:addDays(t,-21),weeks:0,time:'20:00',active:true,vialId:''};
+  s.vials=[v];s.protocols=[a,b];
+  [6,5,4,2,1].forEach((k,i)=>s.logs.push({id:uid(),demo:true,ts:addDays(t,-k)+'T08:0'+i,pid:a.id,name:a.name,dose:250,unit:'mcg',site:DEFAULT_SITES[i%4],feel:4,note:'',vialId:v.id}));
+  s.logs.push({id:uid(),demo:true,ts:addDays(t,-7)+'T20:10',pid:b.id,name:b.name,dose:2,unit:'mg',site:DEFAULT_SITES[4],feel:3,note:'Beispieleintrag',vialId:''});
+  [[21,84.2,92],[14,83.9,91.5],[7,83.5,91],[0,83.1,90]].forEach(x=>s.body.push({id:uid(),demo:true,date:addDays(t,-x[0]),weight:x[1],waist:x[2],fat:0,note:''}));
+  return s;
+}
+function normalize(o){const b=blank();if(!o||typeof o!=='object')return b;
+  return{v:1,rev:+o.rev||0,demo:!!o.demo,protocols:Array.isArray(o.protocols)?o.protocols:[],logs:Array.isArray(o.logs)?o.logs:[],vials:Array.isArray(o.vials)?o.vials:[],body:Array.isArray(o.body)?o.body:[],sites:Array.isArray(o.sites)&&o.sites.length?o.sites.map(String):b.sites,settings:{notify:String((o.settings||{}).notify||''),followup:Math.max(0,Math.round(+(o.settings||{}).followup)||0)}}}
+
+let state=blank(),services=null,saving=false,dirty=false,loaded=false;
+function setSync(t){$('#sync').textContent=t}
+const isEmpty=s=>!s.protocols.length&&!s.logs.length&&!s.vials.length&&!s.body.length;
+async function load(){
+  try{
+    const r=await fetch('api/state',{cache:'no-store'});if(!r.ok)throw 0;
+    const j=normalize(await r.json());if(loaded&&j.rev===state.rev)return;
+    state=(j.rev===0&&isEmpty(j))?demoState():j;loaded=true;setSync('In Home Assistant gespeichert');render();
+  }catch(e){
+    setSync('Home Assistant nicht erreichbar. Seite neu laden.');
+    if(!loaded)$('#view').innerHTML='<div class="card"><span class="muted">Die Daten konnten nicht geladen werden.</span></div>';
+  }
+}
+function save(){dirty=true;flush()}
+async function flush(){
+  if(saving||!dirty)return;
+  saving=true;dirty=false;setSync('Speichert …');
+  try{
+    const r=await fetch('api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)});
+    if(r.status===409){state=normalize(await r.json());render();setSync('Auf einem anderen Gerät geändert. Neu geladen, bitte die letzte Eingabe wiederholen.')}
+    else if(!r.ok)throw 0;
+    else{state.rev=(await r.json()).rev;setSync('In Home Assistant gespeichert')}
+  }catch(e){dirty=true;saving=false;setSync('Speichern fehlgeschlagen. Neuer Versuch in 5 Sekunden.');setTimeout(flush,5000);return}
+  saving=false;if(dirty)flush();
+}
+async function loadServices(){
+  try{const r=await fetch('api/notify-services',{cache:'no-store'});services=r.ok?await r.json():[]}catch(e){services=[]}
+  if(loaded&&current()==='daten'&&!dlg.open)render();
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&loaded&&!dirty&&!saving&&!dlg.open)load()});
+
+/* ---------- Logik ---------- */
+function isDue(p,day){
+  if(!p.active)return false;
+  const diff=dayDiff(p.start,day);if(diff<0)return false;
+  if(p.weeks>0&&diff>=p.weeks*7)return false;
+  if(p.type==='daily')return true;
+  if(p.type==='interval')return diff%Math.max(1,p.n||1)===0;
+  return (p.days||[]).includes(parseYmd(day).getDay());
+}
+const logsOn=day=>state.logs.filter(l=>l.ts.slice(0,10)===day);
+function freqLabel(p){
+  if(p.type==='daily')return'täglich';
+  if(p.type==='interval')return'alle '+p.n+' Tage';
+  const order=[1,2,3,4,5,6,0];return order.filter(d=>(p.days||[]).includes(d)).map(d=>WD[d]).join(', ')||'keine Tage gewählt';
+}
+function nextSite(){
+  const last={};state.logs.forEach(l=>{if(l.site&&(!last[l.site]||l.ts>last[l.site]))last[l.site]=l.ts});
+  return state.sites.slice().sort((a,b)=>(last[a]||'').localeCompare(last[b]||''))[0]||'';
+}
+function vialLeft(v){
+  let used=0;state.logs.forEach(l=>{if(l.vialId===v.id){if(l.unit==='mcg')used+=l.dose;else if(l.unit==='mg')used+=l.dose*1000}});
+  const total=v.mg*1000,left=Math.max(0,total-used);return{left,total,pct:total>0?left/total*100:0};
+}
+function adherence(day){
+  const due=state.protocols.filter(p=>isDue(p,day));if(!due.length)return{due:0,done:0};
+  const ids=new Set(logsOn(day).map(l=>l.pid));return{due:due.length,done:due.filter(p=>ids.has(p.id)).length};
+}
+
+/* ---------- Ansichten ---------- */
+const VIEWS=['heute','plan','verlauf','koerper','vials','daten'];
+const METRICS={weight:['Gewicht','kg'],waist:['Bauchumfang','cm'],fat:['Körperfett','%']};
+let bmetric='weight';
+let verlaufFilter='';
+function current(){const h=location.hash.replace('#','');return VIEWS.includes(h)?h:'heute'}
+function render(){
+  const v=current();
+  document.querySelectorAll('#nav a').forEach(a=>{if(a.getAttribute('href')==='#'+v)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+  const banner=state.demo?`<div class="banner"><span>Das sind Beispieldaten, damit du siehst, wie alles aussieht.</span><button data-act="clear-demo">Beispieldaten entfernen</button></div>`:'';
+  $('#view').innerHTML=banner+({heute:vHeute,plan:vPlan,verlauf:vVerlauf,koerper:vKoerper,vials:vVials,daten:vDaten}[v])();
+  if(v==='vials')calc();
+}
+function vHeute(){
+  const t=today(),due=state.protocols.filter(p=>isDue(p,t)),tl=logsOn(t);
+  const done=due.filter(p=>tl.some(l=>l.pid===p.id)).length;
+  let week='';for(let i=6;i>=0;i--){const d=addDays(t,-i),a=adherence(d);const c=!a.due?'':a.done===a.due?'full':a.done>0?'part':(i===0?'':'miss');week+=`<div class="day"><span class="dot ${c}" title="${a.done} von ${a.due}"></span>${WD[parseYmd(d).getDay()]}</div>`}
+  const cards=due.map(p=>{const l=tl.find(x=>x.pid===p.id);const cyc=p.weeks>0?` · Tag ${dayDiff(p.start,t)+1} von ${p.weeks*7}`:'';
+    return `<div class="card ${l?'done':'open'}"><div class="row"><h3>${esc(p.name)}</h3><span class="pill ${l?'ok':'warn'}">${l?'Erledigt':'Offen'}</span></div>
+    <div class="row"><span><span class="num">${fmt(p.dose,3)} ${esc(p.unit)}</span> <span class="muted">${p.time?'· '+esc(p.time)+' Uhr':''}${cyc}</span></span>
+    ${l?`<span class="muted">${esc(l.ts.slice(11))} Uhr${l.site?' · '+esc(l.site):''}</span>`:`<button class="primary" data-act="log" data-pid="${p.id}">Eintragen</button>`}</div></div>`}).join('');
+  const extra=tl.filter(l=>!due.some(p=>p.id===l.pid)).map(l=>`<div class="card done"><div class="row"><h3>${esc(l.name)}</h3><span class="muted">${esc(l.ts.slice(11))} Uhr</span></div><span class="num">${fmt(l.dose,3)} ${esc(l.unit)}</span></div>`).join('');
+  return `<section><div class="row"><h2>${deDate(t)}</h2><button data-act="log" data-pid="">Freie Dosis eintragen</button></div>
+  <div class="summary"><div class="card"><span class="muted">Heute erledigt</span><span class="big">${done} / ${due.length}</span></div>
+  <div class="card"><span class="muted">Nächste Stelle laut Rotation</span><strong>${esc(nextSite()||'Keine Stellen angelegt')}</strong></div></div>
+  <div class="card"><span class="muted">Letzte 7 Tage</span><div class="week">${week}</div></div></section>
+  <section><h2>Fällig heute</h2>${cards||`<div class="card"><span class="muted">Heute ist nichts fällig. Lege unter Protokolle einen Plan an.</span></div>`}${extra}</section>`;
+}
+function vPlan(){
+  const t=today();
+  const list=state.protocols.map(p=>{const diff=dayDiff(p.start,t);const ended=p.weeks>0&&diff>=p.weeks*7;
+    const st=!p.active?['neutral','Pausiert']:ended?['neutral','Zyklus beendet']:diff<0?['neutral','Startet '+deDate(p.start)]:['ok','Aktiv'];
+    return `<div class="card"><div class="row"><h3>${esc(p.name)}</h3><span class="pill ${st[0]}">${st[1]}</span></div>
+    <span><span class="num">${fmt(p.dose,3)} ${esc(p.unit)}</span> <span class="muted">· ${esc(freqLabel(p))}${p.time?' · '+esc(p.time)+' Uhr':''}</span></span>
+    <span class="muted">Start ${deDate(p.start)}${p.weeks>0?' · '+p.weeks+' Wochen':' · ohne Enddatum'}</span>
+    <div class="actions"><button class="ghost" data-act="toggle-p" data-id="${p.id}">${p.active?'Pausieren':'Fortsetzen'}</button><button class="ghost" data-act="edit-p" data-id="${p.id}">Bearbeiten</button><button class="ghost danger" data-act="del" data-kind="protocols" data-id="${p.id}">Löschen</button></div></div>`}).join('');
+  return `<section><div class="row"><h2>Protokolle</h2><button class="primary" data-act="edit-p" data-id="">Neues Protokoll</button></div>${list||`<div class="card"><span class="muted">Noch kein Protokoll angelegt.</span></div>`}</section>`;
+}
+function vVerlauf(){
+  const names=[...new Set(state.logs.map(l=>l.name))].sort();
+  const logs=state.logs.filter(l=>!verlaufFilter||l.name===verlaufFilter).sort((a,b)=>b.ts.localeCompare(a.ts));
+  let html='',day='';
+  logs.forEach(l=>{const d=l.ts.slice(0,10);if(d!==day){if(day)html+='</div>';day=d;html+=`<div class="card"><span class="muted">${deDate(d)}</span>`}
+    html+=`<div class="row"><span><strong>${esc(l.name)}</strong> <span class="num">${fmt(l.dose,3)} ${esc(l.unit)}</span><br><span class="muted">${esc(l.ts.slice(11))} Uhr${l.site?' · '+esc(l.site):''}${l.feel?' · Befinden '+l.feel+'/5':''}${l.note?' · '+esc(l.note):''}</span></span><button class="ghost danger" data-act="del" data-kind="logs" data-id="${l.id}">Löschen</button></div>`});
+  if(day)html+='</div>';
+  return `<section><div class="row"><h2>Verlauf</h2><span class="muted">${logs.length} Einträge</span></div>
+  <label>Filter<select id="vfilter"><option value="">Alle Peptide</option>${names.map(n=>`<option ${n===verlaufFilter?'selected':''}>${esc(n)}</option>`).join('')}</select></label>
+  ${html||`<div class="card"><span class="muted">Noch keine Einträge.</span></div>`}</section>`;
+}
+function chart(pts,unit){
+  if(pts.length<2)return `<span class="muted">Ab zwei Messwerten erscheint hier die Kurve.</span>`;
+  const W=560,H=200,L=50,R=14,T=14,B=26,xs=pts.map(p=>parseYmd(p.date).getTime()),ys=pts.map(p=>p.v);
+  const mn=Math.min(...ys),mx=Math.max(...ys);let lo=mn,hi=mx;if(hi-lo<1e-9){lo-=1;hi+=1}else{const d=(hi-lo)*.15;lo-=d;hi+=d}
+  const x0=xs[0],x1=xs[xs.length-1],X=t=>L+(t-x0)/(x1-x0)*(W-L-R),Y=v=>T+(hi-v)/(hi-lo)*(H-T-B);
+  const c=pts.map((p,i)=>[X(xs[i]).toFixed(1),Y(p.v).toFixed(1)]),path=c.map((q,i)=>(i?'L':'M')+q[0]+' '+q[1]).join(' ');
+  const ticks=mx-mn<1e-9?[mn]:[mn,mx],dm=s=>s.slice(8,10)+'.'+s.slice(5,7)+'.';
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Verlauf in ${esc(unit)}">
+  ${ticks.map(v=>`<line class="grid" x1="${L}" x2="${W-R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text x="${L-6}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end">${fmt(v,1)}</text>`).join('')}
+  <path class="area" d="${path} L${c[c.length-1][0]} ${H-B} L${c[0][0]} ${H-B} Z"/><path class="line" d="${path}"/>
+  ${c.map((q,i)=>`<circle class="${i===c.length-1?'end':'pt'}" cx="${q[0]}" cy="${q[1]}" r="${i===c.length-1?5:3}"/>`).join('')}
+  <text x="${L}" y="${H-6}">${dm(pts[0].date)}</text><text x="${W-R}" y="${H-6}" text-anchor="end">${dm(pts[pts.length-1].date)}</text></svg>`;
+}
+function vKoerper(){
+  const m=METRICS[bmetric],all=state.body.slice().sort((a,b)=>a.date.localeCompare(b.date));
+  const pts=all.filter(b=>b[bmetric]>0).map(b=>({date:b.date,v:b[bmetric]}));
+  const last=pts[pts.length-1],diff=pts.length>1?last.v-pts[0].v:0;
+  const list=all.slice().reverse().map(b=>`<div class="row"><span><strong>${deDate(b.date)}</strong><br><span class="num">${[b.weight>0?fmt(b.weight,1)+' kg':'',b.waist>0?fmt(b.waist,1)+' cm':'',b.fat>0?fmt(b.fat,1)+' %':''].filter(Boolean).join(' · ')}</span>${b.note?` <span class="muted">· ${esc(b.note)}</span>`:''}</span>
+  <span><button class="ghost" data-act="edit-b" data-id="${b.id}">Bearbeiten</button><button class="ghost danger" data-act="del" data-kind="body" data-id="${b.id}">Löschen</button></span></div>`).join('');
+  return `<section><div class="row"><h2>Körperwerte</h2><button class="primary" data-act="edit-b" data-id="">Messung eintragen</button></div>
+  <div class="summary"><div class="card"><span class="muted">${m[0]} aktuell</span><span class="big">${last?fmt(last.v,1)+' '+m[1]:'–'}</span></div>
+  <div class="card"><span class="muted">Seit erster Messung</span><span class="big ${diff>0?'up':diff<0?'down':''}">${pts.length>1?(diff>0?'+':'')+fmt(diff,1)+' '+m[1]:'–'}</span></div></div>
+  <div class="card"><label>Kurve für<select id="bmetric">${Object.keys(METRICS).map(k=>`<option value="${k}" ${k===bmetric?'selected':''}>${METRICS[k][0]} (${METRICS[k][1]})</option>`).join('')}</select></label>${chart(pts,m[1])}</div></section>
+  <section><h2>Messungen</h2><div class="card">${list||`<span class="muted">Noch keine Messung eingetragen.</span>`}</div></section>`;
+}
+function dlgBody(id){
+  const b=state.body.find(x=>x.id===id)||{date:today()};
+  openDlg('body',`<h2>${id?'Messung bearbeiten':'Messung eintragen'}</h2><input type="hidden" id="f-id" value="${esc(id||'')}">
+  <label>Datum<input id="f-date" type="date" required value="${esc(b.date)}"></label>
+  <div class="grid2"><label>Gewicht (kg)<input id="f-weight" inputmode="decimal" value="${b.weight||''}"></label><label>Bauchumfang (cm)<input id="f-waist" inputmode="decimal" value="${b.waist||''}"></label></div>
+  <div class="grid2"><label>Körperfett (%)<input id="f-fat" inputmode="decimal" value="${b.fat||''}"></label><label>Notiz<input id="f-note" value="${esc(b.note||'')}"></label></div>${foot('Speichern')}`);
+}
+function vVials(){
+  const list=state.vials.map(v=>{const r=vialLeft(v),low=r.pct<20;
+    return `<div class="card"><div class="row"><h3>${esc(v.name)}</h3><span class="pill ${r.left<=0?'crit':low?'warn':'ok'}">${r.left<=0?'Leer':low?'Fast leer':'Vorrat ok'}</span></div>
+    <div class="bar ${low?'low':''}"><i style="width:${r.pct.toFixed(1)}%"></i></div>
+    <div class="row"><span class="num">${fmt(r.left/1000,3)} von ${fmt(v.mg,3)} mg übrig</span><span class="muted">${v.ml?fmt(v.ml)+' ml Wasser · '+fmt(v.mg*1000/v.ml,0)+' mcg/ml':'nicht angemischt'}</span></div>
+    <span class="muted">${v.mixed?'Angemischt am '+deDate(v.mixed):''}</span>
+    <div class="actions"><button class="ghost" data-act="vial-calc" data-id="${v.id}">In Rechner übernehmen</button><button class="ghost" data-act="edit-v" data-id="${v.id}">Bearbeiten</button><button class="ghost danger" data-act="del" data-kind="vials" data-id="${v.id}">Löschen</button></div></div>`}).join('');
+  return `<section><div class="row"><h2>Vials</h2><button class="primary" data-act="edit-v" data-id="">Neues Vial</button></div>${list||`<div class="card"><span class="muted">Noch kein Vial angelegt.</span></div>`}
+  <span class="muted">Der Vorrat sinkt mit jedem Eintrag, dem du dieses Vial zuordnest (nur mcg und mg).</span></section>
+  <section><h2>Misch-Rechner</h2><div class="card">
+  <div class="grid2"><label>Peptid im Vial (mg)<input id="c-mg" inputmode="decimal" value="5"></label><label>Wasser (ml)<input id="c-ml" inputmode="decimal" value="2"></label></div>
+  <div class="grid3"><label>Gewünschte Dosis<input id="c-dose" inputmode="decimal" value="250"></label><label>Einheit<select id="c-unit"><option>mcg</option><option>mg</option></select></label></div>
+  <div class="out" id="c-out"></div><span class="muted" id="c-warn"></span>
+  <span class="muted">Einheiten gelten für eine U-100-Insulinspritze (100 Einheiten = 1 ml). Der Rechner rechnet nur mit deinen Werten und schlägt keine Dosis vor.</span></div></section>`;
+}
+function calc(){
+  const o=$('#c-out');if(!o)return;
+  const mg=num($('#c-mg').value),ml=num($('#c-ml').value);let dose=num($('#c-dose').value);if($('#c-unit').value==='mg')dose*=1000;
+  if(!(mg>0&&ml>0&&dose>0)){o.innerHTML='';$('#c-warn').textContent='Bitte drei Werte größer als 0 eingeben.';return}
+  const conc=mg*1000/ml,vol=dose/conc,units=vol*100;
+  o.innerHTML=`<div><span class="muted">Aufziehen</span><span class="big">${fmt(units,1)} E</span></div><div><span class="muted">Volumen</span><span class="big">${fmt(vol,3)} ml</span></div>
+  <div><span class="muted">Konzentration</span><span class="num">${fmt(conc,0)} mcg/ml</span></div><div><span class="muted">Dosen pro Vial</span><span class="num">${fmt(mg*1000/dose,1)}</span></div>`;
+  $('#c-warn').textContent=dose>mg*1000?'Die Dosis ist größer als der Inhalt des Vials.':units>100?'Das sind mehr als 100 Einheiten, also mehr als eine 1-ml-Spritze fasst.':units<2?'Unter 2 Einheiten lässt sich kaum genau aufziehen. Mit mehr Wasser wird das Volumen größer.':'';
+}
+function vDaten(){
+  return `<section><h2>Injektionsstellen</h2><div class="card"><label>Eine Stelle pro Zeile. Die Rotation schlägt immer die am längsten nicht benutzte vor.<textarea id="sites">${esc(state.sites.join('\n'))}</textarea></label><div class="actions"><button data-act="save-sites">Stellen speichern</button></div></div></section>
+  <section><h2>Erinnerungen</h2><div class="card">
+  <label>Benachrichtigen über<select id="r-notify"><option value="">Aus</option>${[...new Set([...(services||[]),state.settings.notify].filter(Boolean))].map(s=>`<option ${s===state.settings.notify?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
+  <label>Nochmal erinnern nach (Minuten, 0 = nie)<input id="r-follow" inputmode="numeric" value="${state.settings.followup||0}"></label>
+  <span class="muted">Erinnert wird zur Uhrzeit des Protokolls, solange die Dosis an dem Tag noch offen ist. Protokolle ohne Uhrzeit erinnern nicht.</span>
+  <div class="actions"><button data-act="test-notify">Test senden</button><button class="primary" data-act="save-rem">Erinnerungen speichern</button></div><span class="muted" id="r-msg"></span></div></section>
+  <section><h2>Sichern und übertragen</h2><div class="card"><span class="muted">Export lädt alle Daten als JSON herunter oder kopiert sie in die Zwischenablage. Zum Import fügst du ein exportiertes JSON hier ein.</span>
+  <textarea id="io" placeholder="Exportiertes JSON hier einfügen"></textarea>
+  <div class="actions"><a class="btn" href="api/export" download>Export herunterladen</a><button data-act="export">Export kopieren</button><button data-act="import">Import übernehmen</button><button class="danger" data-act="wipe">Alle Daten löschen</button></div><span class="muted" id="io-msg"></span></div></section>
+  <p class="note">Dieser Tracker ist ein Protokoll und ein Rechenhilfsmittel. Er empfiehlt keine Substanzen, Dosen oder Zyklen und ersetzt keine ärztliche Beratung. Alle Werte gibst du selbst ein.</p>`;
+}
+
+/* ---------- Dialoge ---------- */
+const dlg=$('#dlg'),form=$('#dlgform');
+function openDlg(kind,html){form.dataset.kind=kind;form.innerHTML=html;if(!dlg.open)dlg.showModal()}
+const unitOpts=u=>['mcg','mg','IE'].map(x=>`<option ${x===u?'selected':''}>${x}</option>`).join('');
+const vialOpts=id=>`<option value="">Kein Vial</option>`+state.vials.map(v=>`<option value="${v.id}" ${v.id===id?'selected':''}>${esc(v.name)}</option>`).join('');
+const foot=l=>`<div class="actions"><button type="button" data-act="close">Abbrechen</button><button class="primary" type="submit">${l}</button></div><span class="muted" id="f-err"></span>`;
+function dlgLog(pid){
+  const p=state.protocols.find(x=>x.id===pid)||{},ns=nextSite();
+  openDlg('log',`<h2>Dosis eintragen</h2><input type="hidden" id="f-pid" value="${esc(pid||'')}">
+  <label>Peptid<input id="f-name" required value="${esc(p.name||'')}" list="f-names"></label><datalist id="f-names">${state.protocols.map(x=>`<option value="${esc(x.name)}">`).join('')}</datalist>
+  <div class="grid3"><label>Dosis<input id="f-dose" inputmode="decimal" required value="${p.dose??''}"></label><label>Einheit<select id="f-unit">${unitOpts(p.unit||'mcg')}</select></label></div>
+  <label>Zeitpunkt<input id="f-ts" type="datetime-local" required value="${nowLocal()}"></label>
+  <div class="grid2"><label>Stelle<select id="f-site"><option value="">Keine Angabe</option>${state.sites.map(s=>`<option ${s===ns?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
+  <label>Vial<select id="f-vial">${vialOpts(p.vialId||'')}</select></label></div>
+  <label>Befinden<select id="f-feel"><option value="0">Keine Angabe</option><option value="1">1 · schlecht</option><option value="2">2</option><option value="3">3 · neutral</option><option value="4">4</option><option value="5">5 · sehr gut</option></select></label>
+  <label>Notiz<input id="f-note"></label>${foot('Eintragen')}`);
+}
+function dlgProtocol(id){
+  const p=state.protocols.find(x=>x.id===id)||{type:'daily',n:2,days:[],start:today(),weeks:'',unit:'mcg',time:''};
+  openDlg('protocol',`<h2>${id?'Protokoll bearbeiten':'Neues Protokoll'}</h2><input type="hidden" id="f-id" value="${esc(id||'')}">
+  <label>Peptid<input id="f-name" required value="${esc(p.name||'')}"></label>
+  <div class="grid3"><label>Dosis<input id="f-dose" inputmode="decimal" required value="${p.dose??''}"></label><label>Einheit<select id="f-unit">${unitOpts(p.unit)}</select></label></div>
+  <label>Rhythmus<select id="f-type"><option value="daily" ${p.type==='daily'?'selected':''}>Täglich</option><option value="interval" ${p.type==='interval'?'selected':''}>Alle N Tage</option><option value="weekdays" ${p.type==='weekdays'?'selected':''}>Bestimmte Wochentage</option></select></label>
+  <label id="f-n-wrap">Abstand in Tagen<input id="f-n" inputmode="numeric" value="${p.n||2}"></label>
+  <div class="checks" id="f-days-wrap">${[1,2,3,4,5,6,0].map(d=>`<label><input type="checkbox" id="f-day-${d}" value="${d}" ${(p.days||[]).includes(d)?'checked':''}>${WD[d]}</label>`).join('')}</div>
+  <div class="grid2"><label>Startdatum<input id="f-start" type="date" required value="${esc(p.start)}"></label><label>Uhrzeit (optional)<input id="f-time" type="time" value="${esc(p.time||'')}"></label></div>
+  <div class="grid2"><label>Zyklus in Wochen (leer = offen)<input id="f-weeks" inputmode="numeric" value="${p.weeks||''}"></label><label>Standard-Vial<select id="f-vial">${vialOpts(p.vialId||'')}</select></label></div>${foot('Speichern')}`);
+  typeVis();
+}
+function typeVis(){const t=$('#f-type');if(!t)return;$('#f-n-wrap').classList.toggle('hide',t.value!=='interval');$('#f-days-wrap').classList.toggle('hide',t.value!=='weekdays')}
+function dlgVial(id){
+  const v=state.vials.find(x=>x.id===id)||{mixed:today()};
+  openDlg('vial',`<h2>${id?'Vial bearbeiten':'Neues Vial'}</h2><input type="hidden" id="f-id" value="${esc(id||'')}">
+  <label>Bezeichnung<input id="f-name" required value="${esc(v.name||'')}"></label>
+  <div class="grid2"><label>Inhalt (mg)<input id="f-mg" inputmode="decimal" required value="${v.mg??''}"></label><label>Wasser (ml, optional)<input id="f-ml" inputmode="decimal" value="${v.ml||''}"></label></div>
+  <label>Angemischt am<input id="f-mixed" type="date" value="${esc(v.mixed||'')}"></label>${foot('Speichern')}`);
+}
+function dlgConfirm(text,kind,id){openDlg('confirm',`<h2>${esc(text)}</h2><input type="hidden" id="f-kind" value="${esc(kind)}"><input type="hidden" id="f-id" value="${esc(id||'')}"><div class="actions"><button type="button" data-act="close">Abbrechen</button><button class="primary" type="submit">Löschen</button></div>`)}
+const err=m=>{const e=$('#f-err');if(e)e.textContent=m};
+
+form.addEventListener('submit',ev=>{
+  ev.preventDefault();const k=form.dataset.kind,val=id=>($('#'+id)||{}).value||'';
+  if(k==='log'){
+    const dose=num(val('f-dose')),name=val('f-name').trim();if(!name||!(dose>0))return err('Bitte Peptid und eine Dosis größer als 0 angeben.');
+    let pid=val('f-pid');const pr=state.protocols.find(p=>p.id===pid);
+    if(!pr||pr.name!==name){const m=state.protocols.find(p=>p.name.toLowerCase()===name.toLowerCase());pid=m?m.id:''}
+    state.logs.push({id:uid(),ts:val('f-ts')||nowLocal(),pid,name,dose,unit:val('f-unit'),site:val('f-site'),feel:+val('f-feel')||0,note:val('f-note').trim(),vialId:val('f-vial')});
+  }else if(k==='protocol'){
+    const dose=num(val('f-dose')),name=val('f-name').trim(),type=val('f-type');if(!name||!(dose>0)||!val('f-start'))return err('Bitte Peptid, Dosis und Startdatum angeben.');
+    const days=[0,1,2,3,4,5,6].filter(d=>$('#f-day-'+d).checked);if(type==='weekdays'&&!days.length)return err('Bitte mindestens einen Wochentag wählen.');
+    const o={name,dose,unit:val('f-unit'),type,n:Math.max(1,Math.round(num(val('f-n')))||1),days,start:val('f-start'),weeks:Math.max(0,Math.round(num(val('f-weeks')))||0),time:val('f-time'),vialId:val('f-vial')};
+    const ex=state.protocols.find(p=>p.id===val('f-id'));if(ex)Object.assign(ex,o);else state.protocols.push({id:uid(),active:true,...o});
+  }else if(k==='vial'){
+    const mg=num(val('f-mg')),name=val('f-name').trim();if(!name||!(mg>0))return err('Bitte Bezeichnung und Inhalt in mg angeben.');
+    const o={name,mg,ml:num(val('f-ml'))>0?num(val('f-ml')):0,mixed:val('f-mixed')};
+    const ex=state.vials.find(v=>v.id===val('f-id'));if(ex)Object.assign(ex,o);else state.vials.push({id:uid(),...o});
+  }else if(k==='body'){
+    const g=i=>{const n=num(val(i));return n>0?n:0},o={date:val('f-date'),weight:g('f-weight'),waist:g('f-waist'),fat:g('f-fat'),note:val('f-note').trim()};
+    if(!o.date||!(o.weight||o.waist||o.fat))return err('Bitte Datum und mindestens einen Messwert angeben.');
+    const id=val('f-id');state.body=state.body.filter(x=>x.id!==id&&x.date!==o.date);state.body.push({id:id||uid(),...o});
+  }else if(k==='confirm'){
+    const kind=val('f-kind'),id=val('f-id');
+    if(kind==='all')state=Object.assign(blank(),{rev:state.rev,settings:state.settings});else state[kind]=state[kind].filter(x=>x.id!==id);
+  }
+  dlg.close();save();render();
+});
+form.addEventListener('change',e=>{if(e.target.id==='f-type')typeVis()});
+
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act,id=b.dataset.id;
+  if(a==='close')dlg.close();
+  else if(a==='log')dlgLog(b.dataset.pid);
+  else if(a==='edit-p')dlgProtocol(id);
+  else if(a==='edit-v')dlgVial(id);
+  else if(a==='edit-b')dlgBody(id);
+  else if(a==='toggle-p'){const p=state.protocols.find(x=>x.id===id);if(p){p.active=!p.active;save();render()}}
+  else if(a==='del')dlgConfirm({protocols:'Dieses Protokoll löschen? Der Verlauf bleibt erhalten.',logs:'Diesen Eintrag löschen?',vials:'Dieses Vial löschen?',body:'Diese Messung löschen?'}[b.dataset.kind],b.dataset.kind,id);
+  else if(a==='wipe')dlgConfirm('Wirklich alle Daten löschen? Das lässt sich nicht rückgängig machen.','all','');
+  else if(a==='clear-demo'){['protocols','logs','vials','body'].forEach(k=>state[k]=state[k].filter(x=>!x.demo));state.demo=false;save();render()}
+  else if(a==='vial-calc'){const v=state.vials.find(x=>x.id===id);if(v){$('#c-mg').value=v.mg;if(v.ml)$('#c-ml').value=v.ml;calc();$('#c-mg').scrollIntoView({block:'center'})}}
+  else if(a==='save-sites'){const s=$('#sites').value.split('\n').map(x=>x.trim()).filter(Boolean);state.sites=[...new Set(s)];save();render()}
+  else if(a==='save-rem'){state.settings={notify:$('#r-notify').value,followup:Math.max(0,Math.round(num($('#r-follow').value))||0)};save();render();$('#r-msg').textContent='Gespeichert.'}
+  else if(a==='test-notify'){const s=$('#r-notify').value,m=$('#r-msg');if(!s){m.textContent='Bitte zuerst einen Dienst wählen.';return}m.textContent='Sendet …';
+    try{const r=await fetch('api/test-notify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({service:s})}),j=await r.json();m.textContent=j.ok?'Testnachricht gesendet. Kommt sie nicht an, prüfe den gewählten Dienst.':'Senden fehlgeschlagen: '+(j.error||'unbekannter Fehler')}catch(x){m.textContent='Senden fehlgeschlagen. Verbindung zu Home Assistant prüfen.'}}
+  else if(a==='export'){const j=JSON.stringify(state,null,1);$('#io').value=j;try{await navigator.clipboard.writeText(j);$('#io-msg').textContent='Export in die Zwischenablage kopiert.'}catch(x){$('#io-msg').textContent='Kopieren wurde blockiert. Markiere den Text im Feld und kopiere ihn von Hand.'}}
+  else if(a==='import'){try{const o=JSON.parse($('#io').value);if(!o||!Array.isArray(o.logs)||!Array.isArray(o.protocols))throw 0;state=Object.assign(normalize(o),{rev:state.rev,settings:state.settings});save();render()}catch(x){$('#io-msg').textContent='Das ist kein gültiger Export. Füge das komplette JSON aus „Export kopieren“ ein.'}}
+});
+document.addEventListener('input',e=>{if(e.target.id&&e.target.id.startsWith('c-'))calc()});
+document.addEventListener('change',e=>{if(e.target.id==='vfilter'){verlaufFilter=e.target.value;render()}else if(e.target.id==='bmetric'){bmetric=e.target.value;render()}else if(e.target.id==='c-unit')calc()});
+window.addEventListener('hashchange',render);
+load();
+loadServices();
+</script>
+</body>
+</html>
