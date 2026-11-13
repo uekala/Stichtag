@@ -1,0 +1,539 @@
+import 'dart:math';
+
+import 'package:flutter/material.dart';
+
+import '../core/app_store.dart';
+import '../core/logic.dart';
+import 'widgets.dart';
+
+const _unitOptions = <String, String>{'mcg': 'mcg', 'mg': 'mg', 'IE': 'IE'};
+
+Map<String, String> _vialOptions(Json state) => <String, String>{
+  '': 'Kein Vial',
+  for (final vial in items(state, 'vials')) str(vial['id']): str(vial['name']),
+};
+
+String _numText(Object? value) {
+  final number = toDouble(value);
+  return number > 0 ? fmtNum(number, 3) : '';
+}
+
+/// Eine Dosis eintragen, optional vorbelegt aus einem Protokoll.
+class LogEditor extends StatefulWidget {
+  const LogEditor({super.key, required this.store, this.protocol});
+
+  final AppStore store;
+  final Json? protocol;
+
+  @override
+  State<LogEditor> createState() => _LogEditorState();
+}
+
+class _LogEditorState extends State<LogEditor> {
+  late final TextEditingController _name;
+  late final TextEditingController _dose;
+  final _note = TextEditingController();
+  late String _unit;
+  late String _site;
+  late String _vial;
+  late String _date;
+  late String _time;
+  int _feel = 0;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final protocol = widget.protocol;
+    final state = widget.store.state;
+    _name = TextEditingController(text: str(protocol?['name']));
+    _dose = TextEditingController(text: _numText(protocol?['dose']));
+    final unit = str(protocol?['unit']);
+    _unit = doseUnits.contains(unit) ? unit : 'mcg';
+    final suggested = nextSite(state);
+    _site = sitesOf(state).contains(suggested) ? suggested : '';
+    final vial = str(protocol?['vialId']);
+    _vial = _vialOptions(state).containsKey(vial) ? vial : '';
+    final stamp = nowStamp();
+    _date = stamp.substring(0, 10);
+    _time = stamp.substring(11);
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _dose.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _name.text.trim();
+    final dose = toDouble(_dose.text);
+    if (name.isEmpty || dose <= 0) {
+      setState(
+        () => _error = 'Bitte Peptid und eine Dosis größer als 0 angeben.',
+      );
+      return;
+    }
+    widget.store.change((state) {
+      final protocols = items(state, 'protocols');
+      var pid = str(widget.protocol?['id']);
+      final own = firstOrNull(protocols, (p) => p['id'] == pid);
+      if (own == null || str(own['name']) != name) {
+        final match = firstOrNull(
+          protocols,
+          (p) => str(p['name']).toLowerCase() == name.toLowerCase(),
+        );
+        pid = match == null ? '' : str(match['id']);
+      }
+      items(state, 'logs').add(<String, dynamic>{
+        'id': newId(),
+        'ts': '${_date}T$_time',
+        'pid': pid,
+        'name': name,
+        'dose': dose,
+        'unit': _unit,
+        'site': _site,
+        'feel': _feel,
+        'note': _note.text.trim(),
+        'vialId': _vial,
+      });
+    });
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = widget.store.state;
+    return EditorScaffold(
+      title: 'Dosis eintragen',
+      onSave: _save,
+      error: _error,
+      children: [
+        TextField(
+          controller: _name,
+          decoration: const InputDecoration(labelText: 'Peptid'),
+        ),
+        Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: NumField(controller: _dose, label: 'Dosis'),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: dropdown<String>(
+                label: 'Einheit',
+                value: _unit,
+                options: _unitOptions,
+                onChanged: (v) => setState(() => _unit = v),
+              ),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: DateField(
+                label: 'Datum',
+                value: _date,
+                onChanged: (v) => setState(() => _date = v),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TimeField(
+                label: 'Uhrzeit',
+                value: _time,
+                onChanged: (v) => setState(() => _time = v),
+              ),
+            ),
+          ],
+        ),
+        dropdown<String>(
+          label: 'Stelle',
+          value: _site,
+          options: <String, String>{
+            '': 'Keine Angabe',
+            for (final site in sitesOf(state)) site: site,
+          },
+          onChanged: (v) => setState(() => _site = v),
+        ),
+        dropdown<String>(
+          label: 'Vial',
+          value: _vial,
+          options: _vialOptions(state),
+          onChanged: (v) => setState(() => _vial = v),
+        ),
+        dropdown<int>(
+          label: 'Befinden',
+          value: _feel,
+          options: const <int, String>{
+            0: 'Keine Angabe',
+            1: '1 · schlecht',
+            2: '2',
+            3: '3 · neutral',
+            4: '4',
+            5: '5 · sehr gut',
+          },
+          onChanged: (v) => setState(() => _feel = v),
+        ),
+        TextField(
+          controller: _note,
+          decoration: const InputDecoration(labelText: 'Notiz'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Protokoll anlegen oder bearbeiten.
+class ProtocolEditor extends StatefulWidget {
+  const ProtocolEditor({super.key, required this.store, this.existing});
+
+  final AppStore store;
+  final Json? existing;
+
+  @override
+  State<ProtocolEditor> createState() => _ProtocolEditorState();
+}
+
+class _ProtocolEditorState extends State<ProtocolEditor> {
+  late final TextEditingController _name;
+  late final TextEditingController _dose;
+  late final TextEditingController _interval;
+  late final TextEditingController _weeks;
+  late String _unit;
+  late String _type;
+  late Set<int> _days;
+  late String _start;
+  late String _time;
+  late String _vial;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.existing;
+    _name = TextEditingController(text: str(p?['name']));
+    _dose = TextEditingController(text: _numText(p?['dose']));
+    _interval = TextEditingController(
+      text: max(1, toInt(p?['n'] ?? 2)).toString(),
+    );
+    final weeks = toInt(p?['weeks']);
+    _weeks = TextEditingController(text: weeks > 0 ? weeks.toString() : '');
+    final unit = str(p?['unit']);
+    _unit = doseUnits.contains(unit) ? unit : 'mcg';
+    final type = str(p?['type']);
+    _type = const ['daily', 'interval', 'weekdays'].contains(type)
+        ? type
+        : 'daily';
+    final days = p?['days'];
+    _days = days is List ? days.map(toInt).toSet() : <int>{};
+    final start = str(p?['start']);
+    _start = tryParseYmd(start) == null ? todayYmd() : start;
+    _time = str(p?['time']);
+    final vial = str(p?['vialId']);
+    _vial = _vialOptions(widget.store.state).containsKey(vial) ? vial : '';
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _dose.dispose();
+    _interval.dispose();
+    _weeks.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _name.text.trim();
+    final dose = toDouble(_dose.text);
+    if (name.isEmpty || dose <= 0) {
+      setState(
+        () => _error = 'Bitte Peptid und eine Dosis größer als 0 angeben.',
+      );
+      return;
+    }
+    if (_type == 'weekdays' && _days.isEmpty) {
+      setState(() => _error = 'Bitte mindestens einen Wochentag wählen.');
+      return;
+    }
+    final data = <String, dynamic>{
+      'name': name,
+      'dose': dose,
+      'unit': _unit,
+      'type': _type,
+      'n': max(1, toInt(_interval.text)),
+      'days': _days.toList()..sort(),
+      'start': _start,
+      'weeks': max(0, toInt(_weeks.text)),
+      'time': _time,
+      'vialId': _vial,
+    };
+    final id = str(widget.existing?['id']);
+    widget.store.change((state) {
+      final protocols = items(state, 'protocols');
+      final current = firstOrNull(protocols, (p) => p['id'] == id);
+      if (current != null) {
+        current.addAll(data);
+      } else {
+        protocols.add(<String, dynamic>{
+          'id': newId(),
+          'active': true,
+          ...data,
+        });
+      }
+    });
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) => EditorScaffold(
+    title: widget.existing == null ? 'Neues Protokoll' : 'Protokoll bearbeiten',
+    onSave: _save,
+    error: _error,
+    children: [
+      TextField(
+        controller: _name,
+        decoration: const InputDecoration(labelText: 'Peptid'),
+      ),
+      Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: NumField(controller: _dose, label: 'Dosis'),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: dropdown<String>(
+              label: 'Einheit',
+              value: _unit,
+              options: _unitOptions,
+              onChanged: (v) => setState(() => _unit = v),
+            ),
+          ),
+        ],
+      ),
+      dropdown<String>(
+        label: 'Rhythmus',
+        value: _type,
+        options: const <String, String>{
+          'daily': 'Täglich',
+          'interval': 'Alle N Tage',
+          'weekdays': 'Bestimmte Wochentage',
+        },
+        onChanged: (v) => setState(() => _type = v),
+      ),
+      if (_type == 'interval')
+        NumField(controller: _interval, label: 'Abstand in Tagen'),
+      if (_type == 'weekdays')
+        Wrap(
+          spacing: 6,
+          children: [
+            for (final day in const [1, 2, 3, 4, 5, 6, 0])
+              FilterChip(
+                label: Text(weekdayShort[day]),
+                selected: _days.contains(day),
+                onSelected: (selected) => setState(() {
+                  if (selected) {
+                    _days.add(day);
+                  } else {
+                    _days.remove(day);
+                  }
+                }),
+              ),
+          ],
+        ),
+      DateField(
+        label: 'Startdatum',
+        value: _start,
+        onChanged: (v) => setState(() => _start = v),
+      ),
+      TimeField(
+        label: 'Uhrzeit für die Erinnerung',
+        value: _time,
+        clearable: true,
+        onChanged: (v) => setState(() => _time = v),
+      ),
+      NumField(controller: _weeks, label: 'Zyklus in Wochen (leer = offen)'),
+      dropdown<String>(
+        label: 'Standard-Vial',
+        value: _vial,
+        options: _vialOptions(widget.store.state),
+        onChanged: (v) => setState(() => _vial = v),
+      ),
+    ],
+  );
+}
+
+/// Vial anlegen oder bearbeiten.
+class VialEditor extends StatefulWidget {
+  const VialEditor({super.key, required this.store, this.existing});
+
+  final AppStore store;
+  final Json? existing;
+
+  @override
+  State<VialEditor> createState() => _VialEditorState();
+}
+
+class _VialEditorState extends State<VialEditor> {
+  late final TextEditingController _name;
+  late final TextEditingController _mg;
+  late final TextEditingController _ml;
+  late String _mixed;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final v = widget.existing;
+    _name = TextEditingController(text: str(v?['name']));
+    _mg = TextEditingController(text: _numText(v?['mg']));
+    _ml = TextEditingController(text: _numText(v?['ml']));
+    _mixed = v == null ? todayYmd() : str(v['mixed']);
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _mg.dispose();
+    _ml.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _name.text.trim();
+    final mg = toDouble(_mg.text);
+    if (name.isEmpty || mg <= 0) {
+      setState(() => _error = 'Bitte Bezeichnung und Inhalt in mg angeben.');
+      return;
+    }
+    final data = <String, dynamic>{
+      'name': name,
+      'mg': mg,
+      'ml': max(0.0, toDouble(_ml.text)),
+      'mixed': _mixed,
+    };
+    final id = str(widget.existing?['id']);
+    widget.store.change((state) {
+      final vials = items(state, 'vials');
+      final current = firstOrNull(vials, (v) => v['id'] == id);
+      if (current != null) {
+        current.addAll(data);
+      } else {
+        vials.add(<String, dynamic>{'id': newId(), ...data});
+      }
+    });
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) => EditorScaffold(
+    title: widget.existing == null ? 'Neues Vial' : 'Vial bearbeiten',
+    onSave: _save,
+    error: _error,
+    children: [
+      TextField(
+        controller: _name,
+        decoration: const InputDecoration(labelText: 'Bezeichnung'),
+      ),
+      NumField(controller: _mg, label: 'Inhalt (mg)'),
+      NumField(controller: _ml, label: 'Wasser (ml, optional)'),
+      DateField(
+        label: 'Angemischt am',
+        value: _mixed,
+        onChanged: (v) => setState(() => _mixed = v),
+      ),
+    ],
+  );
+}
+
+/// Körperwerte eines Tages eintragen oder bearbeiten.
+class BodyEditor extends StatefulWidget {
+  const BodyEditor({super.key, required this.store, this.existing});
+
+  final AppStore store;
+  final Json? existing;
+
+  @override
+  State<BodyEditor> createState() => _BodyEditorState();
+}
+
+class _BodyEditorState extends State<BodyEditor> {
+  late final TextEditingController _weight;
+  late final TextEditingController _waist;
+  late final TextEditingController _fat;
+  late final TextEditingController _note;
+  late String _date;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final b = widget.existing;
+    _weight = TextEditingController(text: _numText(b?['weight']));
+    _waist = TextEditingController(text: _numText(b?['waist']));
+    _fat = TextEditingController(text: _numText(b?['fat']));
+    _note = TextEditingController(text: str(b?['note']));
+    final date = str(b?['date']);
+    _date = tryParseYmd(date) == null ? todayYmd() : date;
+  }
+
+  @override
+  void dispose() {
+    _weight.dispose();
+    _waist.dispose();
+    _fat.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final weight = max(0.0, toDouble(_weight.text));
+    final waist = max(0.0, toDouble(_waist.text));
+    final fat = max(0.0, toDouble(_fat.text));
+    if (weight <= 0 && waist <= 0 && fat <= 0) {
+      setState(() => _error = 'Bitte mindestens einen Messwert angeben.');
+      return;
+    }
+    final id = str(widget.existing?['id']);
+    widget.store.change((state) {
+      final body = items(state, 'body');
+      // Pro Tag gibt es eine Messung: gleiche ID oder gleiches Datum ersetzen.
+      body.removeWhere((b) => b['id'] == id || b['date'] == _date);
+      body.add(<String, dynamic>{
+        'id': id.isEmpty ? newId() : id,
+        'date': _date,
+        'weight': weight,
+        'waist': waist,
+        'fat': fat,
+        'note': _note.text.trim(),
+      });
+    });
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) => EditorScaffold(
+    title: widget.existing == null ? 'Messung eintragen' : 'Messung bearbeiten',
+    onSave: _save,
+    error: _error,
+    children: [
+      DateField(
+        label: 'Datum',
+        value: _date,
+        onChanged: (v) => setState(() => _date = v),
+      ),
+      NumField(controller: _weight, label: 'Gewicht (kg)'),
+      NumField(controller: _waist, label: 'Bauchumfang (cm)'),
+      NumField(controller: _fat, label: 'Körperfett (%)'),
+      TextField(
+        controller: _note,
+        decoration: const InputDecoration(labelText: 'Notiz'),
+      ),
+    ],
+  );
+}

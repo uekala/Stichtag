@@ -1,5 +1,5 @@
 name: Stichtag
-version: "1.0.0"
+version: "1.1.0"
 slug: stichtag
 url: https://github.com/uekala/stichtag
 description: Peptid-Tracker. Dosen, Protokolle, Vials und Körperwerte protokollieren, mit Erinnerungen aufs Handy
@@ -9,7 +9,19 @@ arch:
 init: false
 ingress: true
 ingress_port: 8099
+# Kopplung und Geräteverwaltung der Handy-App sind Administratoren vorbehalten.
+panel_admin: true
 panel_icon: mdi:needle
 panel_title: Stichtag
 homeassistant_api: true
 hassio_api: true
+ports:
+  8098/tcp: null
+ports_description:
+  8098/tcp: Nur für die Handy-App hinter einem HTTPS-Proxy; standardmäßig deaktiviert und nicht am Router freigeben
+options:
+  mobile_server_url: ""
+  trusted_proxies: ""
+schema:
+  mobile_server_url: str
+  trusted_proxies: str

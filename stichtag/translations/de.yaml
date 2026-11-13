@@ -1,0 +1,13 @@
+configuration:
+  mobile_server_url:
+    name: Adresse für die Handy-App
+    description: >-
+      HTTPS-Adresse ohne Pfad, unter der das Handy Stichtag erreicht, zum Beispiel
+      die Adresse eines Tailscale-Service. Leer lassen, wenn die Handy-App nicht genutzt wird.
+  trusted_proxies:
+    name: Vertrauenswürdige Proxys
+    description: >-
+      IP-Adressen oder Netze (durch Komma getrennt), von denen die Handy-API Anfragen annimmt.
+      Der Proxy muss HTTPS bereitstellen und X-Forwarded-Proto setzen.
+network:
+  8098/tcp: Handy-API (nur hinter einem HTTPS-Proxy)

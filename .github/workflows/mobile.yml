@@ -1,0 +1,236 @@
+name: Mobile Flutter
+
+concurrency:
+  group: mobile-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - main
+    # Ein Tag wie mobile-v1.0.0 baut die signierte APK und hängt sie an ein GitHub-Release.
+    tags:
+      - "mobile-v*"
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile.yml"
+  workflow_dispatch:
+    inputs:
+      ios:
+        description: "iOS-Simulator-Build ausführen (macOS-Runner, zählt zehnfach bei den Actions-Minuten)"
+        type: boolean
+        default: false
+      android_release:
+        description: "Signierte Android-Release-APK bauen (braucht die vier ANDROID_*-Secrets)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  flutter-tests:
+    name: Flutter analysis and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile/app
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter stable
+        uses: flutter-actions/setup-flutter@v4
+        with:
+          channel: stable
+          version: 3.47.9
+          cache: true
+          cache-sdk: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze Flutter application
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run tests
+        run: flutter test
+
+  android-debug:
+    name: Android debug build
+    runs-on: ubuntu-latest
+    needs: flutter-tests
+    defaults:
+      run:
+        working-directory: mobile/app
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter stable
+        uses: flutter-actions/setup-flutter@v4
+        with:
+          channel: stable
+          version: 3.47.9
+          cache: true
+          cache-sdk: true
+
+      - name: Generate Android and iOS project files
+        run: bash tool/bootstrap-platforms.sh
+
+      - name: Build Android APK
+        # Nur zum Testen: Debug-APKs tragen den zufälligen Debug-Schlüssel des Runners
+        # und lassen sich nicht über eine installierte Version installieren.
+        run: flutter build apk --debug --target-platform android-arm64 --build-number=$((GITHUB_RUN_NUMBER + 1))
+
+      - name: Upload Android test APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: stichtag-android-debug
+          path: mobile/app/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  android-release:
+    name: Android release build (signiert)
+    # Nur auf Anforderung oder bei einem Tag mobile-v*: Die Release-APK ist mit dem
+    # dauerhaften Upload-Schlüssel signiert und lässt sich deshalb über eine
+    # installierte Version installieren.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.android_release)
+      || startsWith(github.ref, 'refs/tags/mobile-v')
+    runs-on: ubuntu-latest
+    needs: flutter-tests
+    defaults:
+      run:
+        working-directory: mobile/app
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter stable
+        uses: flutter-actions/setup-flutter@v4
+        with:
+          channel: stable
+          version: 3.47.9
+          cache: true
+          cache-sdk: true
+
+      - name: Check that the tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        run: |
+          VERSION=$(sed -n 's/^version: *\([0-9.]*\).*/\1/p' pubspec.yaml)
+          if [ "mobile-v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME passt nicht zur Version $VERSION in pubspec.yaml."
+            exit 1
+          fi
+
+      - name: Generate Android and iOS project files
+        run: bash tool/bootstrap-platforms.sh
+
+      - name: Configure persistent release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: python3 tool/configure-android-signing.py --required
+
+      - name: Build signed release APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # versionCode muss bei jedem Update steigen; die Laufnummer dieses Workflows tut das.
+          BUILD_NUMBER=$((GITHUB_RUN_NUMBER + 1))
+          echo "Build-Nummer: $BUILD_NUMBER"
+          # Nur 64-Bit-ARM: Das deckt alle aktuellen Android-Handys ab und hält die APK klein.
+          VERSION=$(sed -n 's/^version: *\([0-9.]*\).*/\1/p' pubspec.yaml)
+          flutter build apk --release --target-platform android-arm64 --build-number="$BUILD_NUMBER" \
+            --dart-define=STICHTAG_VERSION="$VERSION"
+
+      - name: Verify release signature
+        env:
+          ANDROID_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: bash tool/verify-apk-signature.sh build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Remove keystore from runner
+        if: always()
+        run: rm -f android/app/release-upload.jks
+
+      - name: Upload signed release APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: stichtag-android-release
+          path: mobile/app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-android-release:
+    name: GitHub-Release mit signierter APK
+    if: startsWith(github.ref, 'refs/tags/mobile-v')
+    runs-on: ubuntu-latest
+    needs: android-release
+    # Nur dieser Job darf Releases anlegen; er sieht die Signatur-Secrets nicht.
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Download signed release APK
+        uses: actions/download-artifact@v7
+        with:
+          name: stichtag-android-release
+          path: dist
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#mobile-v}"
+          APK="dist/stichtag-$VERSION.apk"
+          mv dist/app-release.apk "$APK"
+          python3 tools/changelog_section.py mobile/app/CHANGELOG.md "$VERSION" > notes.md
+          # Wurde das Release schon im Browser angelegt, APK und Text ergänzen.
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$APK" --clobber
+            gh release edit "$GITHUB_REF_NAME" --title "Stichtag Mobile $VERSION" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" "$APK" \
+              --title "Stichtag Mobile $VERSION" --notes-file notes.md
+          fi
+
+  ios-simulator:
+    name: iOS simulator build
+    # macOS-Minuten zählen zehnfach: nur bei manuellem Start, nicht bei jedem Push oder PR.
+    if: github.event_name == 'workflow_dispatch' && inputs.ios
+    runs-on: macos-latest
+    needs: flutter-tests
+    defaults:
+      run:
+        working-directory: mobile/app
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter stable
+        uses: flutter-actions/setup-flutter@v4
+        with:
+          channel: stable
+          version: 3.47.9
+          cache: true
+          cache-sdk: true
+
+      - name: Generate Android and iOS project files
+        run: bash tool/bootstrap-platforms.sh
+
+      - name: Build iOS simulator app
+        run: flutter build ios --simulator --debug

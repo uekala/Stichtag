@@ -1,23 +1,34 @@
 #!/usr/bin/env python3
 """Stichtag: Weboberfläche, Datenspeicher und Erinnerungen."""
+import hashlib
+import hmac
+import ipaddress
 import json
 import os
+import secrets
 import threading
 import time
 import urllib.error
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlsplit
 
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "www")
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 DEV = os.environ.get("DEV") == "1"
+DEV_MOBILE = os.environ.get("DEV_MOBILE") == "1"
+VERSION = "1.1.0"
 PORT = int(os.environ.get("PORT", "8099"))
+MOBILE_PORT = int(os.environ.get("MOBILE_PORT", "8098"))
+PAIRING_TTL = 600
 INGRESS_GATEWAY = "172.30.32.2"
 MAX_BODY = 5 * 1024 * 1024
 STATE_FILE = os.path.join(DATA_DIR, "state.json")
 NOTIFIED_FILE = os.path.join(DATA_DIR, "notified.json")
+DEVICES_FILE = os.path.join(DATA_DIR, "devices.json")
+OPTIONS_FILE = os.path.join(DATA_DIR, "options.json")
 DEFAULT_SITES = [
     "Bauch links", "Bauch rechts", "Oberschenkel links",
     "Oberschenkel rechts", "Flanke links", "Flanke rechts",
@@ -66,6 +77,141 @@ def valid_state(s):
     if not all(isinstance(s.get(k), list) for k in LISTS):
         return False
     return isinstance(s.get("sites"), list) and isinstance(s.get("settings"), dict)
+
+
+def put_state(new):
+    """Speichert den Stand, wenn er auf der aktuellen Revision aufbaut."""
+    if not valid_state(new):
+        return 400, {"error": "Ungültige Daten"}
+    with lock:
+        cur = load_state()
+        if int(new.get("rev") or 0) != int(cur.get("rev") or 0):
+            return 409, cur
+        new["rev"] = int(cur.get("rev") or 0) + 1
+        write_json(STATE_FILE, new)
+    return 200, {"rev": new["rev"]}
+
+
+# ---------- Handy-App: Einstellungen, Kopplung, Geräte ----------
+
+def options():
+    opts = read_json(OPTIONS_FILE, {})
+    return opts if isinstance(opts, dict) else {}
+
+
+def mobile_server_url():
+    """HTTPS-Adresse für die Handy-App aus den App-Einstellungen, sonst leer."""
+    raw = str(options().get("mobile_server_url") or "").strip()
+    try:
+        url = urlsplit(raw)
+        if url.scheme != "https" or not url.hostname or url.username or url.query or url.fragment:
+            return ""
+        if url.path not in ("", "/"):
+            return ""
+        return "https://" + url.netloc
+    except ValueError:
+        return ""
+
+
+def trusted_networks():
+    nets = []
+    for part in str(options().get("trusted_proxies") or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            print("Ungültiger Eintrag in trusted_proxies:", part, flush=True)
+    return nets
+
+
+def sha256(text):
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def now_iso():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+pair_lock = threading.Lock()
+pairings = {}   # Hash des Kopplungscodes -> Ablaufzeit
+attempts = {}   # Gegenstelle -> Zeitpunkte fehlgeschlagener Versuche
+
+
+def create_pairing():
+    secret = secrets.token_urlsafe(32)
+    now = time.time()
+    with pair_lock:
+        for key in [k for k, exp in pairings.items() if exp < now]:
+            del pairings[key]
+        pairings[sha256(secret)] = now + PAIRING_TTL
+    return secret
+
+
+def redeem_pairing(secret):
+    with pair_lock:
+        exp = pairings.pop(sha256(str(secret)), None)
+    return exp is not None and exp >= time.time()
+
+
+def too_many_attempts(peer, limit=10, window=60):
+    now = time.time()
+    with pair_lock:
+        recent = [t for t in attempts.get(peer, []) if now - t < window]
+        attempts[peer] = recent
+        return len(recent) >= limit
+
+
+def note_failure(peer):
+    with pair_lock:
+        attempts.setdefault(peer, []).append(time.time())
+
+
+def load_devices():
+    devices = read_json(DEVICES_FILE, [])
+    return devices if isinstance(devices, list) else []
+
+
+def add_device(name):
+    token = secrets.token_urlsafe(32)
+    name = " ".join(str(name or "").split())[:60] or "Handy"
+    device = {"id": secrets.token_hex(8), "name": name, "token_hash": sha256(token),
+              "created": now_iso(), "last_used": now_iso()}
+    with lock:
+        devices = load_devices()
+        devices.append(device)
+        write_json(DEVICES_FILE, devices)
+    return device, token
+
+
+def find_device(token):
+    if not token:
+        return None
+    wanted = sha256(token)
+    with lock:
+        devices = load_devices()
+        for device in devices:
+            if hmac.compare_digest(str(device.get("token_hash")), wanted):
+                if str(device.get("last_used"))[:13] != now_iso()[:13]:
+                    device["last_used"] = now_iso()
+                    write_json(DEVICES_FILE, devices)
+                return device
+    return None
+
+
+def remove_device(device_id):
+    with lock:
+        devices = load_devices()
+        kept = [d for d in devices if d.get("id") != device_id]
+        if len(kept) != len(devices):
+            write_json(DEVICES_FILE, kept)
+            return True
+    return False
+
+
+def public_device(device):
+    return {k: device.get(k) for k in ("id", "name", "created", "last_used")}
 
 
 # ---------- Fälligkeit (gleiche Regeln wie in der Oberfläche) ----------
@@ -220,11 +366,14 @@ def reminder_loop():
 
 # ---------- HTTP ----------
 
-class Handler(BaseHTTPRequestHandler):
+class BaseHandler(BaseHTTPRequestHandler):
     server_version = "Stichtag"
 
     def log_message(self, *args):
         pass
+
+    def route(self):
+        return self.path.split("?", 1)[0].rstrip("/") or "/"
 
     def reply(self, code, body, ctype="application/json", extra=None):
         raw = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode()
@@ -237,12 +386,6 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def allowed(self):
-        if DEV or self.client_address[0] == INGRESS_GATEWAY:
-            return True
-        self.reply(403, {"error": "Nur über Home Assistant erreichbar"})
-        return False
-
     def body(self):
         n = int(self.headers.get("Content-Length") or 0)
         if n <= 0 or n > MAX_BODY:
@@ -252,16 +395,42 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return None
 
+
+class Handler(BaseHandler):
+    """Weboberfläche; nur über Home Assistant (Ingress) erreichbar."""
+
+    def allowed(self):
+        if DEV or self.client_address[0] == INGRESS_GATEWAY:
+            return True
+        self.reply(403, {"error": "Nur über Home Assistant erreichbar"})
+        return False
+
+    def admin(self):
+        """Kopplung und Geräteverwaltung nur für angemeldete HA-Benutzer."""
+        if DEV or self.headers.get("X-Remote-User-Id"):
+            return True
+        self.reply(403, {"error": "Nur für angemeldete Home-Assistant-Benutzer"})
+        return False
+
     def do_GET(self):
         if not self.allowed():
             return
-        path = self.path.split("?", 1)[0].rstrip("/") or "/"
+        path = self.route()
         if path in ("/", "/index.html"):
             with open(os.path.join(WWW, "index.html"), "rb") as f:
                 self.reply(200, f.read(), "text/html")
+        elif path == "/qrcode.js":
+            with open(os.path.join(WWW, "qrcode.js"), "rb") as f:
+                self.reply(200, f.read(), "text/javascript")
         elif path == "/api/state":
             with lock:
                 self.reply(200, load_state())
+        elif path == "/api/mobile":
+            if not self.admin():
+                return
+            with lock:
+                devices = [public_device(d) for d in load_devices()]
+            self.reply(200, {"server_url": mobile_server_url(), "devices": devices})
         elif path == "/api/export":
             with lock:
                 state = load_state()
@@ -279,23 +448,33 @@ class Handler(BaseHTTPRequestHandler):
     def do_PUT(self):
         if not self.allowed():
             return
-        if self.path.split("?", 1)[0].rstrip("/") != "/api/state":
+        if self.route() != "/api/state":
             return self.reply(404, {"error": "Nicht gefunden"})
-        new = self.body()
-        if not valid_state(new):
-            return self.reply(400, {"error": "Ungültige Daten"})
-        with lock:
-            cur = load_state()
-            if int(new.get("rev") or 0) != int(cur.get("rev") or 0):
-                return self.reply(409, cur)
-            new["rev"] = int(cur.get("rev") or 0) + 1
-            write_json(STATE_FILE, new)
-        self.reply(200, {"rev": new["rev"]})
+        self.reply(*put_state(self.body()))
+
+    def do_DELETE(self):
+        if not self.allowed():
+            return
+        path = self.route()
+        if not path.startswith("/api/devices/"):
+            return self.reply(404, {"error": "Nicht gefunden"})
+        if self.admin():
+            self.reply(200, {"ok": remove_device(path.rsplit("/", 1)[1])})
 
     def do_POST(self):
         if not self.allowed():
             return
-        if self.path.split("?", 1)[0].rstrip("/") != "/api/test-notify":
+        path = self.route()
+        if path == "/api/pairing":
+            if not self.admin():
+                return
+            url = mobile_server_url()
+            if not url:
+                return self.reply(400, {"error": "In den App-Einstellungen fehlt mobile_server_url."})
+            payload = {"type": "stichtag-pairing", "version": 1,
+                       "server_url": url, "pairing_secret": create_pairing()}
+            return self.reply(200, {"payload": payload, "expires_in": PAIRING_TTL})
+        if path != "/api/test-notify":
             return self.reply(404, {"error": "Nicht gefunden"})
         req = self.body() or {}
         try:
@@ -305,8 +484,93 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, {"ok": False, "error": str(e)})
 
 
+class MobileHandler(BaseHandler):
+    """API der Handy-App: nur per HTTPS über einen vertrauenswürdigen Proxy."""
+
+    def peer(self):
+        forwarded = self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        return forwarded or self.client_address[0]
+
+    def allowed(self):
+        if DEV_MOBILE:
+            return True
+        try:
+            address = ipaddress.ip_address(self.client_address[0])
+        except ValueError:
+            address = None
+        if address is None or not any(address in net for net in trusted_networks()):
+            self.reply(403, {"error": "Diese Gegenstelle ist nicht freigegeben"})
+            return False
+        if self.headers.get("X-Forwarded-Proto", "").lower() != "https":
+            self.reply(403, {"error": "HTTPS erforderlich"})
+            return False
+        return True
+
+    def device(self):
+        peer = self.peer()
+        if too_many_attempts(peer):
+            self.reply(429, {"error": "Zu viele Versuche. Bitte eine Minute warten."})
+            return None
+        auth = self.headers.get("Authorization", "")
+        found = find_device(auth[7:].strip()) if auth.startswith("Bearer ") else None
+        if not found:
+            note_failure(peer)
+            self.reply(401, {"error": "Dieses Gerät ist nicht gekoppelt"})
+        return found
+
+    def do_GET(self):
+        if not self.allowed():
+            return
+        path = self.route()
+        if path == "/api/v1/health":
+            self.reply(200, {"app": "stichtag", "version": VERSION, "api": 1})
+        elif path == "/api/v1/state":
+            if self.device():
+                with lock:
+                    self.reply(200, load_state())
+        else:
+            self.reply(404, {"error": "Nicht gefunden"})
+
+    def do_PUT(self):
+        if not self.allowed():
+            return
+        if self.route() != "/api/v1/state":
+            return self.reply(404, {"error": "Nicht gefunden"})
+        if self.device():
+            self.reply(*put_state(self.body()))
+
+    def do_POST(self):
+        if not self.allowed():
+            return
+        if self.route() != "/api/v1/pair":
+            return self.reply(404, {"error": "Nicht gefunden"})
+        peer = self.peer()
+        if too_many_attempts(peer):
+            return self.reply(429, {"error": "Zu viele Versuche. Bitte eine Minute warten."})
+        req = self.body()
+        req = req if isinstance(req, dict) else {}
+        if not redeem_pairing(req.get("pairing_secret") or ""):
+            note_failure(peer)
+            return self.reply(400, {"error": "Der Kopplungscode ist ungültig oder abgelaufen."})
+        device, token = add_device(req.get("device_name"))
+        self.reply(200, {"device": public_device(device), "token": token})
+
+    def do_DELETE(self):
+        if not self.allowed():
+            return
+        if self.route() != "/api/v1/session":
+            return self.reply(404, {"error": "Nicht gefunden"})
+        device = self.device()
+        if device:
+            remove_device(device["id"])
+            self.reply(200, {"ok": True})
+
+
 if __name__ == "__main__":
     os.makedirs(DATA_DIR, exist_ok=True)
     threading.Thread(target=reminder_loop, daemon=True).start()
+    mobile = ThreadingHTTPServer(("0.0.0.0", MOBILE_PORT), MobileHandler)
+    threading.Thread(target=mobile.serve_forever, daemon=True).start()
+    print("Handy-API auf Port %d" % MOBILE_PORT, flush=True)
     print("Stichtag läuft auf Port %d" % PORT, flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

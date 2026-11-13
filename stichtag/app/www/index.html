@@ -90,6 +90,8 @@ dialog form{display:flex;flex-direction:column;gap:12px;padding:18px}
 .chart .pt{fill:var(--surface);stroke:var(--accent);stroke-width:2}
 .chart .end{fill:var(--accent)}
 .up{color:var(--warn)} .down{color:var(--ok)}
+.qr{max-width:240px;background:#fff;padding:8px;border-radius:8px}
+.qr svg{width:100%;height:auto;display:block}
 .hide{display:none!important}
 @media (prefers-reduced-motion:no-preference){.bar>i{transition:width .3s}}
 </style>
@@ -106,6 +108,7 @@ dialog form{display:flex;flex-direction:column;gap:12px;padding:18px}
 </div>
 <dialog id="dlg"><form id="dlgform" method="dialog"></form></dialog>
 
+<script src="qrcode.js"></script>
 <script>
 "use strict";
 const $=s=>document.querySelector(s);
@@ -140,7 +143,7 @@ function demoState(){
 function normalize(o){const b=blank();if(!o||typeof o!=='object')return b;
   return{v:1,rev:+o.rev||0,demo:!!o.demo,protocols:Array.isArray(o.protocols)?o.protocols:[],logs:Array.isArray(o.logs)?o.logs:[],vials:Array.isArray(o.vials)?o.vials:[],body:Array.isArray(o.body)?o.body:[],sites:Array.isArray(o.sites)&&o.sites.length?o.sites.map(String):b.sites,settings:{notify:String((o.settings||{}).notify||''),followup:Math.max(0,Math.round(+(o.settings||{}).followup)||0)}}}
 
-let state=blank(),services=null,saving=false,dirty=false,loaded=false;
+let state=blank(),mobile=null,pairing=null,services=null,saving=false,dirty=false,loaded=false;
 function setSync(t){$('#sync').textContent=t}
 const isEmpty=s=>!s.protocols.length&&!s.logs.length&&!s.vials.length&&!s.body.length;
 async function load(){
@@ -168,6 +171,21 @@ async function flush(){
 async function loadServices(){
   try{const r=await fetch('api/notify-services',{cache:'no-store'});services=r.ok?await r.json():[]}catch(e){services=[]}
   if(loaded&&current()==='daten'&&!dlg.open)render();
+}
+async function loadMobile(){
+  try{const r=await fetch('api/mobile',{cache:'no-store'});mobile=r.ok?await r.json():{error:true}}catch(e){mobile={error:true}}
+  if(loaded&&current()==='daten'&&!dlg.open)render();
+}
+function mobileCard(){
+  if(!mobile)return `<span class="muted">Lädt …</span>`;
+  if(mobile.error)return `<span class="muted">Die Geräteverwaltung ist gerade nicht erreichbar.</span><div class="actions"><button data-act="reload-mobile">Erneut versuchen</button></div>`;
+  if(!mobile.server_url)return `<span class="muted">Die Handy-App ist noch nicht eingerichtet. Trage in der Konfiguration dieser App unter „mobile_server_url“ die HTTPS-Adresse ein, unter der dein Handy Stichtag erreicht. Die Schritte stehen im Reiter Dokumentation.</span>`;
+  if(pairing&&pairing.until<Date.now())pairing=null;
+  const devs=mobile.devices.map(d=>`<div class="row"><span><strong>${esc(d.name)}</strong><br><span class="muted">Gekoppelt ${esc(String(d.created).slice(0,10))} · zuletzt aktiv ${esc(String(d.last_used).slice(0,10))}</span></span><button class="ghost danger" data-act="del-dev" data-id="${esc(d.id)}">Entfernen</button></div>`).join('');
+  return `<span class="muted">Adresse für die Handy-App: <span class="num">${esc(mobile.server_url)}</span></span>
+  ${pairing?`<div class="qr">${pairing.svg}</div><span class="muted">In der Stichtag-App „QR-Code scannen“ wählen. Der Code gilt 10 Minuten und nur einmal. Ohne Kamera den Text unten in die App kopieren.</span><textarea readonly id="pair-text">${esc(pairing.text)}</textarea>`:''}
+  ${devs||`<span class="muted">Noch kein Handy gekoppelt.</span>`}
+  <div class="actions"><button data-act="reload-mobile">Geräteliste aktualisieren</button><button class="primary" data-act="pair">Handy koppeln</button></div><span class="muted" id="mob-msg"></span>`;
 }
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&loaded&&!dirty&&!saving&&!dlg.open)load()});
 
@@ -311,6 +329,7 @@ function vDaten(){
   <label>Nochmal erinnern nach (Minuten, 0 = nie)<input id="r-follow" inputmode="numeric" value="${state.settings.followup||0}"></label>
   <span class="muted">Erinnert wird zur Uhrzeit des Protokolls, solange die Dosis an dem Tag noch offen ist. Protokolle ohne Uhrzeit erinnern nicht.</span>
   <div class="actions"><button data-act="test-notify">Test senden</button><button class="primary" data-act="save-rem">Erinnerungen speichern</button></div><span class="muted" id="r-msg"></span></div></section>
+  <section><h2>Handy-App</h2><div class="card">${mobileCard()}</div></section>
   <section><h2>Sichern und übertragen</h2><div class="card"><span class="muted">Export lädt alle Daten als JSON herunter oder kopiert sie in die Zwischenablage. Zum Import fügst du ein exportiertes JSON hier ein.</span>
   <textarea id="io" placeholder="Exportiertes JSON hier einfügen"></textarea>
   <div class="actions"><a class="btn" href="api/export" download>Export herunterladen</a><button data-act="export">Export kopieren</button><button data-act="import">Import übernehmen</button><button class="danger" data-act="wipe">Alle Daten löschen</button></div><span class="muted" id="io-msg"></span></div></section>
@@ -401,6 +420,13 @@ document.addEventListener('click',async e=>{
   else if(a==='save-rem'){state.settings={notify:$('#r-notify').value,followup:Math.max(0,Math.round(num($('#r-follow').value))||0)};save();render();$('#r-msg').textContent='Gespeichert.'}
   else if(a==='test-notify'){const s=$('#r-notify').value,m=$('#r-msg');if(!s){m.textContent='Bitte zuerst einen Dienst wählen.';return}m.textContent='Sendet …';
     try{const r=await fetch('api/test-notify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({service:s})}),j=await r.json();m.textContent=j.ok?'Testnachricht gesendet. Kommt sie nicht an, prüfe den gewählten Dienst.':'Senden fehlgeschlagen: '+(j.error||'unbekannter Fehler')}catch(x){m.textContent='Senden fehlgeschlagen. Verbindung zu Home Assistant prüfen.'}}
+  else if(a==='pair'){
+    try{const r=await fetch('api/pairing',{method:'POST'}),j=await r.json();if(!r.ok)throw new Error(j.error||'');
+      const t=JSON.stringify(j.payload),q=qrcode(0,'M');q.addData(t);q.make();
+      pairing={svg:q.createSvgTag({cellSize:4,margin:4,scalable:true}),text:t,until:Date.now()+j.expires_in*1000};render()}
+    catch(x){pairing=null;render();const m=$('#mob-msg');if(m)m.textContent='Der Kopplungscode konnte nicht erzeugt werden. '+(x.message||'')}}
+  else if(a==='del-dev'){try{await fetch('api/devices/'+encodeURIComponent(id),{method:'DELETE'})}catch(x){}loadMobile()}
+  else if(a==='reload-mobile')loadMobile();
   else if(a==='export'){const j=JSON.stringify(state,null,1);$('#io').value=j;try{await navigator.clipboard.writeText(j);$('#io-msg').textContent='Export in die Zwischenablage kopiert.'}catch(x){$('#io-msg').textContent='Kopieren wurde blockiert. Markiere den Text im Feld und kopiere ihn von Hand.'}}
   else if(a==='import'){try{const o=JSON.parse($('#io').value);if(!o||!Array.isArray(o.logs)||!Array.isArray(o.protocols))throw 0;state=Object.assign(normalize(o),{rev:state.rev,settings:state.settings});save();render()}catch(x){$('#io-msg').textContent='Das ist kein gültiger Export. Füge das komplette JSON aus „Export kopieren“ ein.'}}
 });
@@ -409,6 +435,7 @@ document.addEventListener('change',e=>{if(e.target.id==='vfilter'){verlaufFilter
 window.addEventListener('hashchange',render);
 load();
 loadServices();
+loadMobile();
 </script>
 </body>
 </html>

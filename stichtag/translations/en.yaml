@@ -1,0 +1,13 @@
+configuration:
+  mobile_server_url:
+    name: Address for the phone app
+    description: >-
+      HTTPS address without a path under which the phone reaches Stichtag, for example
+      a Tailscale service address. Leave empty if the phone app is not used.
+  trusted_proxies:
+    name: Trusted proxies
+    description: >-
+      IP addresses or networks (comma separated) the phone API accepts requests from.
+      The proxy must provide HTTPS and set X-Forwarded-Proto.
+network:
+  8098/tcp: Phone API (only behind an HTTPS proxy)
