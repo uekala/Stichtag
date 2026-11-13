@@ -19,7 +19,7 @@ WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "www")
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 DEV = os.environ.get("DEV") == "1"
 DEV_MOBILE = os.environ.get("DEV_MOBILE") == "1"
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 PORT = int(os.environ.get("PORT", "8099"))
 MOBILE_PORT = int(os.environ.get("MOBILE_PORT", "8098"))
 PAIRING_TTL = 600
@@ -484,6 +484,21 @@ class Handler(BaseHandler):
             self.reply(200, {"ok": False, "error": str(e)})
 
 
+_refusals = {}
+
+
+def log_refusal(peer, reason):
+    """Schreibt abgelehnte Gegenstellen ins Protokoll, je Adresse höchstens einmal pro Minute."""
+    now = time.time()
+    with pair_lock:
+        if now - _refusals.get((peer, reason), 0) < 60:
+            return
+        if len(_refusals) > 200:
+            _refusals.clear()
+        _refusals[(peer, reason)] = now
+    print("Handy-API: Anfrage von %s abgelehnt (%s)" % (peer, reason), flush=True)
+
+
 class MobileHandler(BaseHandler):
     """API der Handy-App: nur per HTTPS über einen vertrauenswürdigen Proxy."""
 
@@ -499,9 +514,11 @@ class MobileHandler(BaseHandler):
         except ValueError:
             address = None
         if address is None or not any(address in net for net in trusted_networks()):
+            log_refusal(self.client_address[0], "nicht in trusted_proxies")
             self.reply(403, {"error": "Diese Gegenstelle ist nicht freigegeben"})
             return False
         if self.headers.get("X-Forwarded-Proto", "").lower() != "https":
+            log_refusal(self.client_address[0], "X-Forwarded-Proto ist nicht https")
             self.reply(403, {"error": "HTTPS erforderlich"})
             return False
         return True

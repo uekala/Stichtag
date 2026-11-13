@@ -38,7 +38,8 @@ Der Kopplungscode gilt 10 Minuten und nur einmal. Jedes Handy bekommt ein eigene
 Hash speichert. Unter **Daten → Handy-App** lässt sich jedes Handy einzeln entfernen.
 
 Anfragen, die nicht von einem Eintrag aus `trusted_proxies` kommen oder nicht per HTTPS beim Proxy ankamen, lehnt
-die Handy-API ab.
+die Handy-API ab. Die abgelehnte Adresse steht dann im Protokoll der App; trage sie bei Bedarf in
+`trusted_proxies` ein.
 
 ## Daten
 

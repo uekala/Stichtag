@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+
+- Das Protokoll nennt die Adresse, wenn die Handy-API eine Anfrage ablehnt. Das hilft beim Einrichten von `trusted_proxies`.
+
 ## 1.1.0
 
 - Handy-App: Kopplung per QR-Code unter Daten → Handy-App, Geräteliste mit Entfernen
