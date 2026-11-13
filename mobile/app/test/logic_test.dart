@@ -212,6 +212,24 @@ void main() {
     });
   });
 
+  test('nameSuggestions nennt eigene Namen zuerst und filtert', () {
+    final state = normalizeState(<String, dynamic>{
+      'protocols': [
+        protocol({'name': 'Mein Mix'}),
+      ],
+      'logs': [
+        {'ts': '2026-11-10T08:00', 'name': 'Alt'},
+        {'ts': '2026-11-11T08:00', 'name': 'mein mix'},
+      ],
+    });
+    final all = nameSuggestions(state, '');
+    expect(all.take(2), ['Mein Mix', 'Alt']);
+    expect(all, hasLength(8));
+    expect(nameSuggestions(state, 'GLUT'), ['Semaglutid']);
+    expect(nameSuggestions(state, 'sema'), ['Semaglutid', 'Semax']);
+    expect(nameSuggestions(state, 'Semax'), isEmpty);
+  });
+
   test('normalizeState füllt fehlende Teile auf', () {
     final state = normalizeState(<String, dynamic>{'rev': 7});
     expect(state['rev'], 7);

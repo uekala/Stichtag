@@ -130,18 +130,20 @@ class NumField extends StatelessWidget {
     required this.controller,
     required this.label,
     this.onChanged,
+    this.errorText,
   });
 
   final TextEditingController controller;
   final String label;
   final ValueChanged<String>? onChanged;
+  final String? errorText;
 
   @override
   Widget build(BuildContext context) => TextField(
     controller: controller,
     onChanged: onChanged,
     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-    decoration: InputDecoration(labelText: label),
+    decoration: InputDecoration(labelText: label, errorText: errorText),
   );
 }
 

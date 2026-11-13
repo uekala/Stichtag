@@ -18,6 +18,67 @@ String _numText(Object? value) {
   return number > 0 ? fmtNum(number, 3) : '';
 }
 
+/// Namensfeld mit Vorschlägen zum Antippen.
+class PeptideNameField extends StatefulWidget {
+  const PeptideNameField({
+    super.key,
+    required this.controller,
+    required this.state,
+    this.errorText,
+    this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final Json state;
+  final String? errorText;
+  final VoidCallback? onChanged;
+
+  @override
+  State<PeptideNameField> createState() => _PeptideNameFieldState();
+}
+
+class _PeptideNameFieldState extends State<PeptideNameField> {
+  void _pick(String name) {
+    widget.controller.text = name;
+    widget.onChanged?.call();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final suggestions = nameSuggestions(widget.state, widget.controller.text);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: widget.controller,
+          textCapitalization: TextCapitalization.words,
+          onChanged: (_) {
+            widget.onChanged?.call();
+            setState(() {});
+          },
+          decoration: InputDecoration(
+            labelText: 'Peptid',
+            hintText: 'Name eintippen oder unten wählen',
+            errorText: widget.errorText,
+          ),
+        ),
+        if (suggestions.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 2,
+            children: [
+              for (final name in suggestions)
+                ActionChip(label: Text(name), onPressed: () => _pick(name)),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 /// Eine Dosis eintragen (optional vorbelegt aus einem Protokoll) oder einen
 /// vorhandenen Eintrag bearbeiten.
 class LogEditor extends StatefulWidget {
@@ -41,7 +102,17 @@ class _LogEditorState extends State<LogEditor> {
   late String _date;
   late String _time;
   int _feel = 0;
-  String? _error;
+  String? _nameError;
+  String? _doseError;
+
+  void _clearErrors() {
+    if (_nameError != null || _doseError != null) {
+      setState(() {
+        _nameError = null;
+        _doseError = null;
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -80,9 +151,10 @@ class _LogEditorState extends State<LogEditor> {
     final name = _name.text.trim();
     final dose = toDouble(_dose.text);
     if (name.isEmpty || dose <= 0) {
-      setState(
-        () => _error = 'Bitte Peptid und eine Dosis größer als 0 angeben.',
-      );
+      setState(() {
+        _nameError = name.isEmpty ? 'Bitte einen Namen eingeben' : null;
+        _doseError = dose <= 0 ? 'Größer als 0' : null;
+      });
       return;
     }
     widget.store.change((state) {
@@ -125,17 +197,24 @@ class _LogEditorState extends State<LogEditor> {
     return EditorScaffold(
       title: widget.existing == null ? 'Dosis eintragen' : 'Eintrag bearbeiten',
       onSave: _save,
-      error: _error,
       children: [
-        TextField(
+        PeptideNameField(
           controller: _name,
-          decoration: const InputDecoration(labelText: 'Peptid'),
+          state: state,
+          errorText: _nameError,
+          onChanged: _clearErrors,
         ),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               flex: 2,
-              child: NumField(controller: _dose, label: 'Dosis'),
+              child: NumField(
+                controller: _dose,
+                label: 'Dosis',
+                errorText: _doseError,
+                onChanged: (_) => _clearErrors(),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -229,6 +308,17 @@ class _ProtocolEditorState extends State<ProtocolEditor> {
   late String _time;
   late String _vial;
   String? _error;
+  String? _nameError;
+  String? _doseError;
+
+  void _clearErrors() {
+    if (_nameError != null || _doseError != null) {
+      setState(() {
+        _nameError = null;
+        _doseError = null;
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -269,9 +359,10 @@ class _ProtocolEditorState extends State<ProtocolEditor> {
     final name = _name.text.trim();
     final dose = toDouble(_dose.text);
     if (name.isEmpty || dose <= 0) {
-      setState(
-        () => _error = 'Bitte Peptid und eine Dosis größer als 0 angeben.',
-      );
+      setState(() {
+        _nameError = name.isEmpty ? 'Bitte einen Namen eingeben' : null;
+        _doseError = dose <= 0 ? 'Größer als 0' : null;
+      });
       return;
     }
     if (_type == 'weekdays' && _days.isEmpty) {
@@ -313,15 +404,23 @@ class _ProtocolEditorState extends State<ProtocolEditor> {
     onSave: _save,
     error: _error,
     children: [
-      TextField(
+      PeptideNameField(
         controller: _name,
-        decoration: const InputDecoration(labelText: 'Peptid'),
+        state: widget.store.state,
+        errorText: _nameError,
+        onChanged: _clearErrors,
       ),
       Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             flex: 2,
-            child: NumField(controller: _dose, label: 'Dosis'),
+            child: NumField(
+              controller: _dose,
+              label: 'Dosis',
+              errorText: _doseError,
+              onChanged: (_) => _clearErrors(),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(

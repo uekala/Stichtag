@@ -147,6 +147,8 @@ const num=v=>{const n=parseFloat(String(v??'').replace(',','.'));return isFinite
 const fmt=(n,d=2)=>Number(n).toLocaleString('de-DE',{maximumFractionDigits:d});
 const WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
 const deDate=s=>{const d=parseYmd(s);return WD[d.getDay()]+', '+pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear()};
+const NAMES=["BPC-157", "TB-500", "Semaglutid", "Tirzepatid", "Retatrutid", "CJC-1295", "Ipamorelin", "Sermorelin", "Tesamorelin", "GHK-Cu", "MOTS-c", "Epitalon", "AOD-9604", "PT-141", "Melanotan II", "Selank", "Semax", "Thymosin Alpha-1", "KPV", "Kisspeptin"];
+const nameOpts=()=>[...new Set([...state.protocols.map(p=>p.name),...state.logs.map(l=>l.name).reverse(),...NAMES].filter(Boolean))].map(n=>`<option value="${esc(n)}">`).join('');
 const DEFAULT_SITES=['Bauch links','Bauch rechts','Oberschenkel links','Oberschenkel rechts','Flanke links','Flanke rechts'];
 const LS='peptid-tracker-v1';
 
@@ -407,7 +409,7 @@ const foot=l=>`<div class="actions"><button type="button" data-act="close">Abbre
 function dlgLog(pid,lid){
   const l=state.logs.find(x=>x.id===lid),p=l||state.protocols.find(x=>x.id===pid)||{},site=l?l.site:nextSite(),feel=l?+l.feel||0:0;
   openDlg('log',`<h2>${l?'Eintrag bearbeiten':'Dosis eintragen'}</h2><input type="hidden" id="f-pid" value="${esc(l?l.pid:pid||'')}"><input type="hidden" id="f-lid" value="${esc(l?l.id:'')}">
-  <label>Peptid<input id="f-name" required value="${esc(p.name||'')}" list="f-names"></label><datalist id="f-names">${state.protocols.map(x=>`<option value="${esc(x.name)}">`).join('')}</datalist>
+  <label>Peptid<input id="f-name" required value="${esc(p.name||'')}" list="f-names" placeholder="Name eintippen oder aus der Liste wählen"></label><datalist id="f-names">${nameOpts()}</datalist>
   <div class="grid3"><label>Dosis<input id="f-dose" inputmode="decimal" required value="${p.dose??''}"></label><label>Einheit<select id="f-unit">${unitOpts(p.unit||'mcg')}</select></label></div>
   <label>Zeitpunkt<input id="f-ts" type="datetime-local" required value="${esc(l?l.ts:nowLocal())}"></label>
   <div class="grid2"><label>Stelle<select id="f-site"><option value="">Keine Angabe</option>${[...new Set([...state.sites,site].filter(Boolean))].map(s=>`<option ${s===site?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
@@ -425,7 +427,7 @@ function toast(text,id){undoId=id;const t=$('#toast');t.querySelector('span').te
 function dlgProtocol(id){
   const p=state.protocols.find(x=>x.id===id)||{type:'daily',n:2,days:[],start:today(),weeks:'',unit:'mcg',time:''};
   openDlg('protocol',`<h2>${id?'Protokoll bearbeiten':'Neues Protokoll'}</h2><input type="hidden" id="f-id" value="${esc(id||'')}">
-  <label>Peptid<input id="f-name" required value="${esc(p.name||'')}"></label>
+  <label>Peptid<input id="f-name" required value="${esc(p.name||'')}" list="f-names" placeholder="Name eintippen oder aus der Liste wählen"></label><datalist id="f-names">${nameOpts()}</datalist>
   <div class="grid3"><label>Dosis<input id="f-dose" inputmode="decimal" required value="${p.dose??''}"></label><label>Einheit<select id="f-unit">${unitOpts(p.unit)}</select></label></div>
   <label>Rhythmus<select id="f-type"><option value="daily" ${p.type==='daily'?'selected':''}>Täglich</option><option value="interval" ${p.type==='interval'?'selected':''}>Alle N Tage</option><option value="weekdays" ${p.type==='weekdays'?'selected':''}>Bestimmte Wochentage</option></select></label>
   <label id="f-n-wrap">Abstand in Tagen<input id="f-n" inputmode="numeric" value="${p.n||2}"></label>

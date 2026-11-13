@@ -22,7 +22,7 @@ WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "www")
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 DEV = os.environ.get("DEV") == "1"
 DEV_MOBILE = os.environ.get("DEV_MOBILE") == "1"
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 PORT = int(os.environ.get("PORT", "8099"))
 MOBILE_PORT = int(os.environ.get("MOBILE_PORT", "8098"))
 PAIRING_TTL = 600

@@ -1,5 +1,10 @@
 # Änderungen der Handy-App
 
+## 1.1.2
+
+- Das Feld „Peptid“ zeigt Vorschläge zum Antippen: eigene Namen zuerst, dann gängige.
+- Fehlt der Name oder die Dosis, steht der Hinweis jetzt direkt am Feld.
+
 ## 1.1.1
 
 - Behoben: Koppeln und Speichern schlugen fehl („Der Kopplungscode ist ungültig oder abgelaufen“).

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.2
+
+- Das Feld „Peptid“ schlägt eigene und gängige Namen vor
+
 ## 1.2.1
 
 - Behoben: Die Handy-App konnte nicht koppeln und nicht speichern, weil der Server in Stücken gesendete Anfragen nicht las

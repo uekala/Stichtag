@@ -423,3 +423,48 @@ List<Json> lowVials(Json state) => items(state, 'vials').where((vial) {
   final level = vialLevel(state, vial);
   return level.totalMcg > 0 && level.fraction < 0.2;
 }).toList();
+
+/// Gängige Namen als Tipphilfe. Nur Namen, keine Dosierungen.
+const peptideNames = <String>[
+  'BPC-157',
+  'TB-500',
+  'Semaglutid',
+  'Tirzepatid',
+  'Retatrutid',
+  'CJC-1295',
+  'Ipamorelin',
+  'Sermorelin',
+  'Tesamorelin',
+  'GHK-Cu',
+  'MOTS-c',
+  'Epitalon',
+  'AOD-9604',
+  'PT-141',
+  'Melanotan II',
+  'Selank',
+  'Semax',
+  'Thymosin Alpha-1',
+  'KPV',
+  'Kisspeptin',
+];
+
+/// Vorschläge für das Feld „Peptid“: zuerst eigene Namen aus Protokollen und
+/// Verlauf, dann die Tipphilfe; gefiltert nach dem bereits getippten Text.
+List<String> nameSuggestions(Json state, String typed, [int limit = 8]) {
+  final query = typed.trim().toLowerCase();
+  final seen = <String>{};
+  final result = <String>[];
+  final candidates = <String>[
+    for (final protocol in items(state, 'protocols')) str(protocol['name']),
+    for (final log in items(state, 'logs').reversed) str(log['name']),
+    ...peptideNames,
+  ];
+  for (final name in candidates) {
+    final key = name.trim().toLowerCase();
+    if (key.isEmpty || key == query || !key.contains(query)) continue;
+    if (!seen.add(key)) continue;
+    result.add(name.trim());
+    if (result.length >= limit) break;
+  }
+  return result;
+}
