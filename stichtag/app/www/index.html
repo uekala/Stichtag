@@ -156,10 +156,10 @@ function blank(){return{v:1,rev:0,demo:false,protocols:[],logs:[],vials:[],body:
 function demoState(){
   const t=today(),s=blank();s.demo=true;
   const v={id:uid(),demo:true,name:'Beispiel A',mg:5,ml:2,mixed:addDays(t,-6),days:28};
-  const a={id:uid(),demo:true,name:'Beispiel A',dose:250,unit:'mcg',type:'daily',n:2,days:[],start:addDays(t,-6),weeks:8,time:'08:00',active:true,vialId:v.id};
+  const a={id:uid(),demo:true,name:'Beispiel A',dose:0.25,unit:'mg',type:'daily',n:2,days:[],start:addDays(t,-6),weeks:8,time:'08:00',active:true,vialId:v.id};
   const b={id:uid(),demo:true,name:'Beispiel B',dose:2,unit:'mg',type:'weekdays',n:2,days:[parseYmd(t).getDay()],start:addDays(t,-21),weeks:0,time:'20:00',active:true,vialId:''};
   s.vials=[v];s.protocols=[a,b];
-  [6,5,4,2,1].forEach((k,i)=>s.logs.push({id:uid(),demo:true,ts:addDays(t,-k)+'T08:0'+i,pid:a.id,name:a.name,dose:250,unit:'mcg',site:DEFAULT_SITES[i%4],feel:4,note:'',vialId:v.id}));
+  [6,5,4,2,1].forEach((k,i)=>s.logs.push({id:uid(),demo:true,ts:addDays(t,-k)+'T08:0'+i,pid:a.id,name:a.name,dose:0.25,unit:'mg',site:DEFAULT_SITES[i%4],feel:4,note:'',vialId:v.id}));
   s.logs.push({id:uid(),demo:true,ts:addDays(t,-7)+'T20:10',pid:b.id,name:b.name,dose:2,unit:'mg',site:DEFAULT_SITES[4],feel:3,note:'Beispieleintrag',vialId:''});
   [[21,84.2,92],[14,83.9,91.5],[7,83.5,91],[0,83.1,90]].forEach(x=>s.body.push({id:uid(),demo:true,date:addDays(t,-x[0]),weight:x[1],waist:x[2],fat:0,note:''}));
   return s;
@@ -370,24 +370,24 @@ function vVials(){
   const list=state.vials.map(v=>{const r=vialLeft(v),low=r.pct<20;
     return `<div class="card"><div class="row"><h3>${esc(v.name)}</h3><span class="pill ${r.left<=0?'crit':low?'warn':'ok'}">${r.left<=0?'Leer':low?'Fast leer':'Vorrat ok'}</span></div>
     <div class="bar ${low?'low':''}"><i style="width:${r.pct.toFixed(1)}%"></i></div>
-    <div class="row"><span class="num">${fmt(r.left/1000,3)} von ${fmt(v.mg,3)} mg übrig</span><span class="muted">${v.ml?fmt(v.ml)+' ml Wasser · '+fmt(v.mg*1000/v.ml,0)+' mcg/ml':'nicht angemischt'}</span></div>
+    <div class="row"><span class="num">${fmt(r.left/1000,3)} von ${fmt(v.mg,3)} mg übrig</span><span class="muted">${v.ml?fmt(v.ml)+' ml Wasser · '+fmt(v.mg/v.ml,3)+' mg/ml':'nicht angemischt'}</span></div>
     <span class="muted">${v.mixed?'Angemischt am '+deDate(v.mixed):''}${(d=>d===null?'':d<0?' · <span class="pill crit">Nicht mehr haltbar</span>':' · noch '+d+(d===1?' Tag':' Tage')+' haltbar')(vialDaysLeft(v,today()))}</span>
     <div class="actions"><button class="ghost" data-act="vial-calc" data-id="${v.id}">In Rechner übernehmen</button><button class="ghost" data-act="edit-v" data-id="${v.id}">Bearbeiten</button><button class="ghost danger" data-act="del" data-kind="vials" data-id="${v.id}">Löschen</button></div></div>`}).join('');
   return `<section><div class="row"><h2>Vials</h2><button class="primary" data-act="edit-v" data-id="">Neues Vial</button></div>${list||`<div class="card"><span class="muted">Noch kein Vial angelegt.</span></div>`}
-  <span class="muted">Der Vorrat sinkt mit jedem Eintrag, dem du dieses Vial zuordnest (nur mcg und mg).</span></section>
+  <span class="muted">Der Vorrat sinkt mit jedem Eintrag, dem du dieses Vial zuordnest (Dosen in mg).</span></section>
   <section><h2>Misch-Rechner</h2><div class="card">
   <div class="grid2"><label>Peptid im Vial (mg)<input id="c-mg" inputmode="decimal" value="5"></label><label>Wasser (ml)<input id="c-ml" inputmode="decimal" value="2"></label></div>
-  <div class="grid3"><label>Gewünschte Dosis<input id="c-dose" inputmode="decimal" value="250"></label><label>Einheit<select id="c-unit"><option>mcg</option><option>mg</option></select></label></div>
+  <label>Gewünschte Dosis (mg)<input id="c-dose" inputmode="decimal" value="0,25"></label>
   <div class="out" id="c-out"></div><span class="muted" id="c-warn"></span>
   <span class="muted">Einheiten gelten für eine U-100-Insulinspritze (100 Einheiten = 1 ml). Der Rechner rechnet nur mit deinen Werten und schlägt keine Dosis vor.</span></div></section>`;
 }
 function calc(){
   const o=$('#c-out');if(!o)return;
-  const mg=num($('#c-mg').value),ml=num($('#c-ml').value);let dose=num($('#c-dose').value);if($('#c-unit').value==='mg')dose*=1000;
+  const mg=num($('#c-mg').value),ml=num($('#c-ml').value);const dose=num($('#c-dose').value)*1000;
   if(!(mg>0&&ml>0&&dose>0)){o.innerHTML='';$('#c-warn').textContent='Bitte drei Werte größer als 0 eingeben.';return}
   const conc=mg*1000/ml,vol=dose/conc,units=vol*100;
   o.innerHTML=`<div><span class="muted">Aufziehen</span><span class="big">${fmt(units,1)} E</span></div><div><span class="muted">Volumen</span><span class="big">${fmt(vol,3)} ml</span></div>
-  <div><span class="muted">Konzentration</span><span class="num">${fmt(conc,0)} mcg/ml</span></div><div><span class="muted">Dosen pro Vial</span><span class="num">${fmt(mg*1000/dose,1)}</span></div>`;
+  <div><span class="muted">Konzentration</span><span class="num">${fmt(conc/1000,3)} mg/ml</span></div><div><span class="muted">Dosen pro Vial</span><span class="num">${fmt(mg*1000/dose,1)}</span></div>`;
   $('#c-warn').textContent=dose>mg*1000?'Die Dosis ist größer als der Inhalt des Vials.':units>100?'Das sind mehr als 100 Einheiten, also mehr als eine 1-ml-Spritze fasst.':units<2?'Unter 2 Einheiten lässt sich kaum genau aufziehen. Mit mehr Wasser wird das Volumen größer.':'';
 }
 function vDaten(){
@@ -408,14 +408,16 @@ function vDaten(){
 /* ---------- Dialoge ---------- */
 const dlg=$('#dlg'),form=$('#dlgform');
 function openDlg(kind,html){form.dataset.kind=kind;form.innerHTML=html;if(!dlg.open)dlg.showModal()}
-const unitOpts=u=>['mcg','mg','IE'].map(x=>`<option ${x===u?'selected':''}>${x}</option>`).join('');
+/* Neue Einträge sind immer in mg. Alte in mcg rechnet das Formular beim Bearbeiten um; andere Einheiten bleiben. */
+const mgForm=(dose,unit)=>unit==='mcg'?{dose:dose===''||dose==null?'':+(dose/1000).toFixed(6),unit:'mg'}:{dose:dose??'',unit:unit&&unit!=='mg'?unit:'mg'};
+const doseField=u=>`<label>Dosis (${esc(u.unit)})<input id="f-dose" inputmode="decimal" required value="${u.dose}"></label><input type="hidden" id="f-unit" value="${esc(u.unit)}">`;
 const vialOpts=id=>`<option value="">Kein Vial</option>`+state.vials.map(v=>`<option value="${v.id}" ${v.id===id?'selected':''}>${esc(v.name)}</option>`).join('');
 const foot=l=>`<div class="actions"><button type="button" data-act="close">Abbrechen</button><button class="primary" type="submit">${l}</button></div><span class="muted" id="f-err"></span>`;
 function dlgLog(pid,lid){
   const l=state.logs.find(x=>x.id===lid),p=l||state.protocols.find(x=>x.id===pid)||{},site=l?l.site:nextSite(),feel=l?+l.feel||0:0;
   openDlg('log',`<h2>${l?'Eintrag bearbeiten':'Dosis eintragen'}</h2><input type="hidden" id="f-pid" value="${esc(l?l.pid:pid||'')}"><input type="hidden" id="f-lid" value="${esc(l?l.id:'')}">
   <label>Peptid<input id="f-name" required value="${esc(p.name||'')}" list="f-names" placeholder="Name eintippen oder aus der Liste wählen"></label><datalist id="f-names">${nameOpts()}</datalist>
-  <div class="grid3"><label>Dosis<input id="f-dose" inputmode="decimal" required value="${l?l.dose:(p.id?doseOn(p,today()):'')}"></label><label>Einheit<select id="f-unit">${unitOpts(p.unit||'mcg')}</select></label></div>
+  ${doseField(mgForm(l?l.dose:(p.id?doseOn(p,today()):''),p.unit))}
   <label>Zeitpunkt<input id="f-ts" type="datetime-local" required value="${esc(l?l.ts:nowLocal())}"></label>
   <div class="grid2"><label>Stelle<select id="f-site"><option value="">Keine Angabe</option>${[...new Set([...state.sites,site].filter(Boolean))].map(s=>`<option ${s===site?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
   <label>Vial<select id="f-vial">${vialOpts(p.vialId||'')}</select></label></div>
@@ -433,18 +435,18 @@ function dlgProtocol(id){
   const p=state.protocols.find(x=>x.id===id)||{type:'daily',n:2,days:[],start:today(),weeks:'',unit:'mcg',time:''};
   openDlg('protocol',`<h2>${id?'Protokoll bearbeiten':'Neues Protokoll'}</h2><input type="hidden" id="f-id" value="${esc(id||'')}">
   <label>Peptid<input id="f-name" required value="${esc(p.name||'')}" list="f-names" placeholder="Name eintippen oder aus der Liste wählen"></label><datalist id="f-names">${nameOpts()}</datalist>
-  <div class="grid3"><label>Dosis<input id="f-dose" inputmode="decimal" required value="${p.dose??''}"></label><label>Einheit<select id="f-unit">${unitOpts(p.unit)}</select></label></div>
+  ${doseField(mgForm(p.dose,p.unit))}
   <label>Rhythmus<select id="f-type"><option value="daily" ${p.type==='daily'?'selected':''}>Täglich</option><option value="interval" ${p.type==='interval'?'selected':''}>Alle N Tage</option><option value="weekdays" ${p.type==='weekdays'?'selected':''}>Bestimmte Wochentage</option></select></label>
   <label id="f-n-wrap">Abstand in Tagen<input id="f-n" inputmode="numeric" value="${p.n||2}"></label>
   <div class="checks" id="f-days-wrap">${[1,2,3,4,5,6,0].map(d=>`<label><input type="checkbox" id="f-day-${d}" value="${d}" ${(p.days||[]).includes(d)?'checked':''}>${WD[d]}</label>`).join('')}</div>
   <div class="grid2"><label>Startdatum<input id="f-start" type="date" required value="${esc(p.start)}"></label><label>Uhrzeit (optional)<input id="f-time" type="time" value="${esc(p.time||'')}"></label></div>
   <div class="grid2"><label>Zyklus in Wochen (leer = offen)<input id="f-weeks" inputmode="numeric" value="${p.weeks||''}"></label><label>Standard-Vial<select id="f-vial">${vialOpts(p.vialId||'')}</select></label></div>
   <span class="muted">Dosisstufen (optional): Ab der angegebenen Woche gilt die neue Dosis. Woche 1 beginnt am Startdatum.</span>
-  <div id="f-steps">${(p.steps||[]).slice().sort((a,b)=>a.week-b.week).map(x=>stepRow(x.week,x.dose)).join('')}</div>
+  <div id="f-steps">${(p.steps||[]).slice().sort((a,b)=>a.week-b.week).map(x=>stepRow(x.week,mgForm(x.dose,p.unit).dose)).join('')}</div>
   <div class="actions"><button type="button" data-act="add-step">Stufe hinzufügen</button></div>${foot('Speichern')}`);
   typeVis();
 }
-const stepRow=(w,d)=>`<div class="grid2 step"><label>Ab Woche<input class="s-week" inputmode="numeric" value="${w||''}"></label><label>Dosis<input class="s-dose" inputmode="decimal" value="${d||''}"></label></div>`;
+const stepRow=(w,d)=>`<div class="grid2 step"><label>Ab Woche<input class="s-week" inputmode="numeric" value="${w||''}"></label><label>Dosis (mg)<input class="s-dose" inputmode="decimal" value="${d||''}"></label></div>`;
 function typeVis(){const t=$('#f-type');if(!t)return;$('#f-n-wrap').classList.toggle('hide',t.value!=='interval');$('#f-days-wrap').classList.toggle('hide',t.value!=='weekdays')}
 function dlgVial(id){
   const v=state.vials.find(x=>x.id===id)||{mixed:today()};
@@ -517,7 +519,7 @@ document.addEventListener('click',async e=>{
   else if(a==='import'){try{const o=JSON.parse($('#io').value);if(!o||!Array.isArray(o.logs)||!Array.isArray(o.protocols))throw 0;state=Object.assign(normalize(o),{rev:state.rev,settings:state.settings});save();render()}catch(x){$('#io-msg').textContent='Das ist kein gültiger Export. Füge das komplette JSON aus „Export kopieren“ ein.'}}
 });
 document.addEventListener('input',e=>{if(e.target.id&&e.target.id.startsWith('c-'))calc()});
-document.addEventListener('change',e=>{if(e.target.id==='vfilter'){verlaufFilter=e.target.value;render()}else if(e.target.id==='bmetric'){bmetric=e.target.value;render()}else if(e.target.id==='c-unit')calc()});
+document.addEventListener('change',e=>{if(e.target.id==='vfilter'){verlaufFilter=e.target.value;render()}else if(e.target.id==='bmetric'){bmetric=e.target.value;render()}});
 window.addEventListener('hashchange',render);
 load();
 loadServices();

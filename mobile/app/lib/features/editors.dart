@@ -6,16 +6,22 @@ import '../core/app_store.dart';
 import '../core/logic.dart';
 import 'widgets.dart';
 
-const _unitOptions = <String, String>{'mcg': 'mcg', 'mg': 'mg', 'IE': 'IE'};
-
 Map<String, String> _vialOptions(Json state) => <String, String>{
   '': 'Kein Vial',
   for (final vial in items(state, 'vials')) str(vial['id']): str(vial['name']),
 };
 
+/// Neue Einträge sind immer in mg. Alte in mcg rechnet das Formular beim
+/// Bearbeiten um; andere Einheiten bleiben, wie sie sind.
+String _formUnit(String stored) =>
+    stored.isEmpty || stored == 'mcg' || stored == 'mg' ? 'mg' : stored;
+
+double _formDose(Object? dose, String stored) =>
+    stored == 'mcg' ? toDouble(dose) / 1000 : toDouble(dose);
+
 String _numText(Object? value) {
   final number = toDouble(value);
-  return number > 0 ? fmtNum(number, 3) : '';
+  return number > 0 ? fmtNum(number, 6) : '';
 }
 
 /// Namensfeld mit Vorschlägen zum Antippen.
@@ -122,13 +128,18 @@ class _LogEditorState extends State<LogEditor> {
     final state = widget.store.state;
     _name = TextEditingController(text: str(source?['name']));
     final protocol = widget.protocol;
+    final stored = str(source?['unit']);
+    _unit = _formUnit(stored);
     _dose = TextEditingController(
-      text: log == null && protocol != null
-          ? _numText(doseOn(protocol, todayYmd()))
-          : _numText(source?['dose']),
+      text: _numText(
+        _formDose(
+          log == null && protocol != null
+              ? doseOn(protocol, todayYmd())
+              : source?['dose'],
+          stored,
+        ),
+      ),
     );
-    final unit = str(source?['unit']);
-    _unit = doseUnits.contains(unit) ? unit : 'mcg';
     _site = log == null ? nextSite(state) : str(log['site']);
     final vial = str(source?['vialId']);
     _vial = _vialOptions(state).containsKey(vial) ? vial : '';
@@ -209,28 +220,11 @@ class _LogEditorState extends State<LogEditor> {
           errorText: _nameError,
           onChanged: _clearErrors,
         ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              flex: 2,
-              child: NumField(
-                controller: _dose,
-                label: 'Dosis',
-                errorText: _doseError,
-                onChanged: (_) => _clearErrors(),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: dropdown<String>(
-                label: 'Einheit',
-                value: _unit,
-                options: _unitOptions,
-                onChanged: (v) => setState(() => _unit = v),
-              ),
-            ),
-          ],
+        NumField(
+          controller: _dose,
+          label: 'Dosis ($_unit)',
+          errorText: _doseError,
+          onChanged: (_) => _clearErrors(),
         ),
         Row(
           children: [
@@ -331,14 +325,14 @@ class _ProtocolEditorState extends State<ProtocolEditor> {
     super.initState();
     final p = widget.existing;
     _name = TextEditingController(text: str(p?['name']));
-    _dose = TextEditingController(text: _numText(p?['dose']));
+    final stored = str(p?['unit']);
+    _unit = _formUnit(stored);
+    _dose = TextEditingController(text: _numText(_formDose(p?['dose'], stored)));
     _interval = TextEditingController(
       text: max(1, toInt(p?['n'] ?? 2)).toString(),
     );
     final weeks = toInt(p?['weeks']);
     _weeks = TextEditingController(text: weeks > 0 ? weeks.toString() : '');
-    final unit = str(p?['unit']);
-    _unit = doseUnits.contains(unit) ? unit : 'mcg';
     final type = str(p?['type']);
     _type = const ['daily', 'interval', 'weekdays'].contains(type)
         ? type
@@ -349,7 +343,7 @@ class _ProtocolEditorState extends State<ProtocolEditor> {
       for (final step in stepsOf(p)) {
         _steps.add((
           TextEditingController(text: step.key.toString()),
-          TextEditingController(text: fmtNum(step.value, 3)),
+          TextEditingController(text: _numText(_formDose(step.value, stored))),
         ));
       }
     }
@@ -436,29 +430,12 @@ class _ProtocolEditorState extends State<ProtocolEditor> {
         errorText: _nameError,
         onChanged: _clearErrors,
       ),
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 2,
-            child: NumField(
-              controller: _dose,
-              label: 'Dosis',
-              errorText: _doseError,
-              onChanged: (_) => _clearErrors(),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: dropdown<String>(
-              label: 'Einheit',
-              value: _unit,
-              options: _unitOptions,
-              onChanged: (v) => setState(() => _unit = v),
-            ),
-          ),
-        ],
-      ),
+      NumField(
+          controller: _dose,
+          label: 'Dosis ($_unit)',
+          errorText: _doseError,
+          onChanged: (_) => _clearErrors(),
+        ),
       dropdown<String>(
         label: 'Rhythmus',
         value: _type,
@@ -519,7 +496,7 @@ class _ProtocolEditorState extends State<ProtocolEditor> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: NumField(controller: step.$2, label: 'Dosis'),
+              child: NumField(controller: step.$2, label: 'Dosis ($_unit)'),
             ),
             IconButton(
               tooltip: 'Stufe entfernen',

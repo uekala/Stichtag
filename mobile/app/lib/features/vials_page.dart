@@ -48,7 +48,7 @@ class VialsPage extends StatelessWidget {
               ),
             const SizedBox(height: 4),
             Text(
-              'Der Vorrat sinkt mit jedem Eintrag, dem du das Vial zuordnest (nur mcg und mg).',
+              'Der Vorrat sinkt mit jedem Eintrag, dem du das Vial zuordnest (Dosen in mg).',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colors.onSurfaceVariant,
               ),
@@ -130,7 +130,7 @@ class _VialCard extends StatelessWidget {
             Text(
               [
                 if (ml > 0)
-                  '${fmtNum(ml)} ml Wasser · ${fmtNum(mg * 1000 / ml, 0)} mcg/ml'
+                  '${fmtNum(ml)} ml Wasser · ${fmtNum(mg / ml, 3)} mg/ml'
                 else
                   'nicht angemischt',
                 if (mixed.isNotEmpty) 'angemischt ${deDate(mixed)}',
@@ -176,8 +176,7 @@ class MixCalculator extends StatefulWidget {
 class _MixCalculatorState extends State<MixCalculator> {
   final _mg = TextEditingController(text: '5');
   final _ml = TextEditingController(text: '2');
-  final _dose = TextEditingController(text: '250');
-  String _unit = 'mcg';
+  final _dose = TextEditingController(text: '0,25');
 
   @override
   void dispose() {
@@ -191,7 +190,7 @@ class _MixCalculatorState extends State<MixCalculator> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final mg = toDouble(_mg.text);
-    final dose = toDouble(_dose.text) * (_unit == 'mg' ? 1000 : 1);
+    final dose = toDouble(_dose.text) * 1000;
     final result = calcMix(
       vialMg: mg,
       waterMl: toDouble(_ml.text),
@@ -237,26 +236,10 @@ class _MixCalculatorState extends State<MixCalculator> {
               ],
             ),
             const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: NumField(
-                    controller: _dose,
-                    label: 'Gewünschte Dosis',
-                    onChanged: update,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: dropdown<String>(
-                    label: 'Einheit',
-                    value: _unit,
-                    options: const <String, String>{'mcg': 'mcg', 'mg': 'mg'},
-                    onChanged: (value) => setState(() => _unit = value),
-                  ),
-                ),
-              ],
+            NumField(
+              controller: _dose,
+              label: 'Gewünschte Dosis (mg)',
+              onChanged: update,
             ),
             if (result != null) ...[
               const SizedBox(height: 14),
@@ -280,7 +263,7 @@ class _MixCalculatorState extends State<MixCalculator> {
               ),
               const SizedBox(height: 10),
               Text(
-                'Konzentration ${fmtNum(result.concentration, 0)} mcg/ml · ${fmtNum(result.dosesPerVial, 1)} Dosen pro Vial',
+                'Konzentration ${fmtNum(result.concentration / 1000, 3)} mg/ml · ${fmtNum(result.dosesPerVial, 1)} Dosen pro Vial',
               ),
             ],
             if (hint.isNotEmpty) ...[

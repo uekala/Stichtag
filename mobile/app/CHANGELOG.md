@@ -1,5 +1,10 @@
 # Änderungen der Handy-App
 
+## 1.2.1
+
+- Dosen werden nur noch in mg eingegeben; die Auswahl der Einheit entfällt. Alte Einträge in mcg rechnet das Formular beim Bearbeiten um.
+- Misch-Rechner und Vials zeigen mg und mg/ml.
+
 ## 1.2.0
 
 - Dosisstufen je Protokoll: Ab einer Woche gilt eine neue Dosis; Heute, „Dosis erledigt“ und die Vorschau rechnen damit.
