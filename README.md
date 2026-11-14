@@ -24,6 +24,10 @@ App-Sperre per Fingerabdruck. Gekoppelt wird sie per QR-Code unter
 **Daten → Handy-App**. Die App spricht nur per HTTPS mit dem eigenen Stichtag-Server; wie das eingerichtet wird,
 steht in der [Dokumentation](stichtag/DOCS.md#handy-app).
 
+Die App läuft auch **ohne Server**: Auf dem Startbildschirm „Ohne Server nutzen“ wählen, dann liegen die Daten
+verschlüsselt nur auf dem Handy. Erinnerungen gibt es in diesem Modus noch nicht; gesichert wird über Export und
+Import unter Mehr.
+
 Signierte Android-Versionen hängen an den [Releases](https://github.com/uekala/stichtag/releases) (Einträge
 „Stichtag Mobile“), sobald eine Version veröffentlicht ist. Details zum Bauen stehen in [mobile/app/README.md](mobile/app/README.md).
 

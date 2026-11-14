@@ -14,6 +14,7 @@ void main() {
       store: AppStore(
         sessionStore: SecureSessionStore(),
         stateCache: SecureStateCache(),
+        localStore: SecureStateCache(key: SecureStateCache.localDataKey),
       ),
     ),
   );

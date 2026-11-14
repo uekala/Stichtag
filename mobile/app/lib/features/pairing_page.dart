@@ -38,6 +38,22 @@ class _PairingPageState extends State<PairingPage> {
     if (raw != null) await _pair(raw);
   }
 
+  Future<void> _startLocal() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.store.startLocal();
+    } on Object {
+      if (mounted) {
+        setState(() => _error = 'Der Speicher des Handys ist nicht erreichbar.');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _pair(String raw) async {
     final PairingPayload payload;
     try {
@@ -109,6 +125,18 @@ class _PairingPageState extends State<PairingPage> {
             OutlinedButton(
               onPressed: _busy ? null : () => _pair(_code.text),
               child: const Text('Mit Code koppeln'),
+            ),
+            const SizedBox(height: 32),
+            Text('Ohne Server', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              'Die Daten bleiben verschlüsselt auf diesem Handy. Es gibt keinen Abgleich mit anderen Geräten und in diesem Modus noch keine Erinnerungen. Sichere die Daten regelmäßig über Mehr → Daten exportieren.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _busy ? null : _startLocal,
+              child: const Text('Ohne Server nutzen'),
             ),
             if (_busy) ...[
               const SizedBox(height: 24),

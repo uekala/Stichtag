@@ -1,7 +1,7 @@
 # Stichtag fürs Handy
 
-Flutter-App für Android und iOS. Sie zeigt und ändert denselben Datenstand wie die Stichtag-Oberfläche in Home
-Assistant und braucht einen eigenen Stichtag-Server (ab Version 1.1.0).
+Flutter-App für Android und iOS. Gekoppelt zeigt und ändert sie denselben Datenstand wie die Stichtag-Oberfläche in
+Home Assistant (Server ab Version 1.1.0). Ohne Server hält sie die Daten verschlüsselt auf dem Handy.
 
 ## Entwickeln
 

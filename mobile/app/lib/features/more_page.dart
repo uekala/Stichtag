@@ -1,4 +1,8 @@
+import 'dart:convert';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../core/app_lock.dart';
 import '../core/app_store.dart';
@@ -59,6 +63,76 @@ class MorePage extends StatelessWidget {
     }
   }
 
+  void _say(BuildContext context, String text) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  /// Übergibt die Sicherung als Datei an das Teilen-Menü des Handys.
+  Future<void> _export(BuildContext context) async {
+    final name = 'stichtag-${todayYmd()}.json';
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(
+              utf8.encode(store.exportJson()),
+              mimeType: 'application/json',
+              name: name,
+            ),
+          ],
+          fileNameOverrides: [name],
+        ),
+      );
+    } on Object {
+      if (context.mounted) _say(context, 'Der Export hat nicht geklappt.');
+    }
+  }
+
+  Future<void> _import(BuildContext context) async {
+    final String text;
+    try {
+      final file = await openFile();
+      if (file == null) return;
+      text = await file.readAsString();
+    } on Object {
+      if (context.mounted) _say(context, 'Die Datei ließ sich nicht lesen.');
+      return;
+    }
+    if (!context.mounted) return;
+    final ok = await confirm(
+      context,
+      'Sicherung einspielen? Sie ersetzt alle Einträge, Protokolle, Vials und Körperwerte.',
+      action: 'Ersetzen',
+    );
+    if (!ok) return;
+    try {
+      store.importJson(text);
+      if (context.mounted) _say(context, 'Sicherung eingespielt.');
+    } on FormatException catch (e) {
+      if (context.mounted) _say(context, e.message.toString());
+    }
+  }
+
+  Future<void> _leaveLocal(BuildContext context) async {
+    final ok = await confirm(
+      context,
+      'Zum Koppeln mit einem Server wechseln? Die Daten bleiben auf diesem Handy liegen. Exportiere sie vorher, wenn du sie auf den Server übernehmen willst, und spiele sie nach dem Koppeln ein.',
+      action: 'Wechseln',
+    );
+    if (ok) await store.leaveLocal();
+  }
+
+  Future<void> _erase(BuildContext context) async {
+    final ok = await confirm(
+      context,
+      'Alle Daten auf diesem Handy löschen? Ohne Sicherung lässt sich das nicht rückgängig machen.',
+    );
+    if (ok) await store.eraseLocal();
+  }
+
   Future<void> _unpair(BuildContext context) async {
     final ok = await confirm(
       context,
@@ -114,25 +188,58 @@ class MorePage extends StatelessWidget {
         _LockTile(lock: appLock),
         const Divider(),
         ListTile(
-          leading: const Icon(Icons.dns_outlined),
-          title: const Text('Server'),
-          subtitle: Text(session?.serverUrl ?? ''),
+          leading: const Icon(Icons.upload_file_outlined),
+          title: const Text('Daten exportieren'),
+          subtitle: const Text('Sicherung als Datei speichern oder teilen'),
+          enabled: store.loadedOnce,
+          onTap: () => _export(context),
         ),
         ListTile(
-          leading: const Icon(Icons.smartphone),
-          title: const Text('Dieses Handy'),
-          subtitle: Text(session?.deviceName ?? ''),
+          leading: const Icon(Icons.download_outlined),
+          title: const Text('Daten importieren'),
+          subtitle: const Text('Eine Sicherung einspielen'),
+          enabled: store.loadedOnce,
+          onTap: () => _import(context),
         ),
-        ListTile(
-          leading: Icon(Icons.link_off, color: theme.colorScheme.error),
-          title: const Text('Kopplung aufheben'),
-          onTap: () => _unpair(context),
-        ),
+        const Divider(),
+        if (store.isLocal) ...[
+          const ListTile(
+            leading: Icon(Icons.phone_android),
+            title: Text('Speicherort'),
+            subtitle: Text('Nur auf diesem Handy, ohne Server'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.dns_outlined),
+            title: const Text('Mit einem Stichtag-Server koppeln'),
+            onTap: () => _leaveLocal(context),
+          ),
+          ListTile(
+            leading: Icon(Icons.delete_forever, color: theme.colorScheme.error),
+            title: const Text('Alle Daten auf diesem Handy löschen'),
+            onTap: () => _erase(context),
+          ),
+        ] else ...[
+          ListTile(
+            leading: const Icon(Icons.dns_outlined),
+            title: const Text('Server'),
+            subtitle: Text(session?.serverUrl ?? ''),
+          ),
+          ListTile(
+            leading: const Icon(Icons.smartphone),
+            title: const Text('Dieses Handy'),
+            subtitle: Text(session?.deviceName ?? ''),
+          ),
+          ListTile(
+            leading: Icon(Icons.link_off, color: theme.colorScheme.error),
+            title: const Text('Kopplung aufheben'),
+            onTap: () => _unpair(context),
+          ),
+        ],
         const Divider(),
         Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
-            'Erinnerungen stellst du in Stichtag in Home Assistant unter Daten ein.\n\n'
+            '${store.isLocal ? 'Ohne Server gibt es noch keine Erinnerungen.' : 'Erinnerungen stellst du in Stichtag in Home Assistant unter Daten ein.'}\n\n'
             'Stichtag ist ein Protokoll und ein Rechenhilfsmittel. Die App empfiehlt keine Substanzen, Dosen oder Zyklen und ersetzt keine ärztliche Beratung.\n\n'
             'Version $appVersion',
             style: theme.textTheme.bodySmall,

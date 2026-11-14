@@ -1,5 +1,10 @@
 # Änderungen der Handy-App
 
+## 1.4.0
+
+- Nutzung ohne Server: Auf dem Startbildschirm „Ohne Server nutzen“ wählen. Die Daten liegen dann verschlüsselt nur auf dem Handy. Erinnerungen gibt es in diesem Modus noch nicht.
+- Sicherung: unter Mehr die Daten als Datei exportieren und wieder einspielen, mit und ohne Server.
+
 ## 1.3.0
 
 - App-Sperre: unter Mehr einschaltbar, fragt beim Öffnen nach Fingerabdruck, Gesicht oder Geräte-PIN.

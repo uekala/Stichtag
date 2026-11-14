@@ -2,6 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+/// Kennzeichnet die Nutzung ohne Server: Die Daten liegen nur auf dem Handy.
+const localServerUrl = 'local';
+
 class Session {
   const Session({
     required this.serverUrl,
@@ -12,6 +15,9 @@ class Session {
   final String serverUrl;
   final String token;
   final String deviceName;
+
+  /// Wahr, wenn die App ohne Server genutzt wird.
+  bool get isLocal => serverUrl == localServerUrl;
 
   String toStoredJson() => jsonEncode(<String, String>{
     'server_url': serverUrl,
@@ -103,10 +109,16 @@ abstract interface class StateCache {
 
 /// Legt den Stand verschlüsselt im Schlüsselspeicher des Handys ab.
 class SecureStateCache implements StateCache {
-  SecureStateCache({FlutterSecureStorage? storage})
-    : _storage = storage ?? const FlutterSecureStorage();
+  SecureStateCache({
+    FlutterSecureStorage? storage,
+    String key = 'stichtag.mobile.state.v1',
+  }) : _storage = storage ?? const FlutterSecureStorage(),
+       _key = key;
 
-  static const _key = 'stichtag.mobile.state.v1';
+  /// Speicherort der Daten bei Nutzung ohne Server.
+  static const localDataKey = 'stichtag.mobile.local.v1';
+
+  final String _key;
 
   final FlutterSecureStorage _storage;
 

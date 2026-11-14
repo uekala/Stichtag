@@ -191,6 +191,79 @@ void main() {
     expect(find.text('QR-Code scannen'), findsOneWidget);
   });
 
+  testWidgets('ohne Server lässt sich die App direkt nutzen', (tester) async {
+    final store = AppStore(
+      sessionStore: InMemorySessionStore(),
+      localStore: InMemoryStateCache(),
+    );
+    await tester.pumpWidget(StichtagApp(store: store, appLock: noLock()));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Ohne Server nutzen'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Ohne Server nutzen'));
+    await tester.pumpAndSettle();
+    expect(store.isLocal, isTrue);
+    expect(find.text('Fällig heute'), findsOneWidget);
+  });
+
+  test('ohne Server bleiben die Daten auf dem Handy erhalten', () async {
+    final sessions = InMemorySessionStore();
+    final local = InMemoryStateCache();
+    final store = AppStore(sessionStore: sessions, localStore: local);
+    await store.init();
+    await store.startLocal();
+    store.change((state) => state['sites'] = <String>['Nur hier']);
+    await Future<void>.delayed(Duration.zero);
+    expect(store.hasUnsaved, isFalse);
+    expect(store.error, isNull);
+
+    // Ein neuer Start liest denselben Stand.
+    final restarted = AppStore(sessionStore: sessions, localStore: local);
+    await restarted.init();
+    expect(restarted.isLocal, isTrue);
+    expect(sitesOf(restarted.state), ['Nur hier']);
+    expect(restarted.state['rev'], 1);
+
+    // Wechsel zum Koppeln lässt die Daten liegen, Löschen entfernt sie.
+    await restarted.leaveLocal();
+    expect(restarted.paired, isFalse);
+    expect(local.encoded, isNotNull);
+    await restarted.startLocal();
+    expect(sitesOf(restarted.state), ['Nur hier']);
+    await restarted.eraseLocal();
+    expect(local.encoded, isNull);
+  });
+
+  test('eine Sicherung lässt sich exportieren und wieder einspielen', () async {
+    final source = AppStore(
+      sessionStore: InMemorySessionStore(),
+      localStore: InMemoryStateCache(),
+    );
+    await source.startLocal();
+    source.change((state) {
+      state['sites'] = <String>['Gesichert'];
+      items(state, 'logs').add(<String, dynamic>{'id': 'l1', 'name': 'Test'});
+    });
+    await Future<void>.delayed(Duration.zero);
+    final backup = source.exportJson();
+
+    final target = AppStore(
+      sessionStore: InMemorySessionStore(),
+      localStore: InMemoryStateCache(),
+    );
+    await target.startLocal();
+    target.importJson(backup);
+    await Future<void>.delayed(Duration.zero);
+    expect(sitesOf(target.state), ['Gesichert']);
+    expect(items(target.state, 'logs').single['name'], 'Test');
+    expect(target.hasUnsaved, isFalse);
+    expect(() => target.importJson('kein json'), throwsFormatException);
+    expect(() => target.importJson('{"x": 1}'), throwsFormatException);
+  });
+
   test('ohne Verbindung zeigt die App den letzten Stand und sendet später', () async {
     final api = FakeApi(<String, dynamic>{'rev': 5})..offline = true;
     final cache = InMemoryStateCache(
