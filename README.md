@@ -35,3 +35,7 @@ Die QR-Codes erzeugt [qrcode-generator](https://github.com/kazuhikoarase/qrcode-
 (MIT-Lizenz).
 
 Die Bedienung steht in [stichtag/DOCS.md](stichtag/DOCS.md).
+
+## Lizenz
+
+Der Code steht unter der [MIT-Lizenz](LICENSE).
