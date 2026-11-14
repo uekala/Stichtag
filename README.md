@@ -19,7 +19,8 @@ Peptid-Tracker als App (Add-on) für Home Assistant: Dosen, Protokolle, Vials un
 ## Handy-App für Android und iOS
 
 Unter `mobile/app` liegt eine Flutter-App, die mit demselben Datenstand arbeitet wie die Oberfläche in Home
-Assistant: Heute, Protokolle, Verlauf, Körperwerte, Vials und Misch-Rechner. Gekoppelt wird sie per QR-Code unter
+Assistant: Heute, Protokolle, Verlauf mit Auswertung, Körperwerte, Vials und Misch-Rechner, auf Wunsch mit
+App-Sperre per Fingerabdruck. Gekoppelt wird sie per QR-Code unter
 **Daten → Handy-App**. Die App spricht nur per HTTPS mit dem eigenen Stichtag-Server; wie das eingerichtet wird,
 steht in der [Dokumentation](stichtag/DOCS.md#handy-app).
 

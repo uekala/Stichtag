@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:stichtag_mobile/core/api.dart';
+import 'package:stichtag_mobile/core/app_lock.dart';
 import 'package:stichtag_mobile/core/app_store.dart';
 import 'package:stichtag_mobile/core/logic.dart';
 import 'package:stichtag_mobile/core/session_store.dart';
@@ -45,6 +46,8 @@ class FakeApi implements StichtagApi {
   Future<void> logout() async {}
 }
 
+AppLock noLock() => AppLock.inMemory(authenticate: (_) async => true);
+
 const session = Session(
   serverUrl: 'https://stichtag.example.ts.net',
   token: 'token',
@@ -54,7 +57,7 @@ const session = Session(
 void main() {
   testWidgets('ohne Kopplung erscheint der Kopplungsbildschirm', (tester) async {
     final store = AppStore(sessionStore: InMemorySessionStore());
-    await tester.pumpWidget(StichtagApp(store: store));
+    await tester.pumpWidget(StichtagApp(store: store, appLock: noLock()));
     await tester.pumpAndSettle();
     expect(find.text('QR-Code scannen'), findsOneWidget);
   });
@@ -82,7 +85,7 @@ void main() {
       sessionStore: InMemorySessionStore(session),
       apiFactory: (_, _) => api,
     );
-    await tester.pumpWidget(StichtagApp(store: store));
+    await tester.pumpWidget(StichtagApp(store: store, appLock: noLock()));
     await tester.pumpAndSettle();
     expect(find.text('Beispiel A'), findsOneWidget);
     expect(find.text('Offen'), findsOneWidget);
@@ -139,7 +142,7 @@ void main() {
       sessionStore: InMemorySessionStore(session),
       apiFactory: (_, _) => api,
     );
-    await tester.pumpWidget(StichtagApp(store: store));
+    await tester.pumpWidget(StichtagApp(store: store, appLock: noLock()));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Verlauf'));
     await tester.pumpAndSettle();
@@ -166,6 +169,26 @@ void main() {
     expect(sitesOf(store.state), ['Nur diese']);
     expect(store.error, isNotNull);
     expect(store.hasUnsaved, isFalse);
+  });
+
+  testWidgets('die App-Sperre verdeckt die App, bis entsperrt wird', (
+    tester,
+  ) async {
+    var allow = false;
+    final lock = AppLock.inMemory(
+      enabled: true,
+      authenticate: (_) async => allow,
+    );
+    final store = AppStore(sessionStore: InMemorySessionStore());
+    await tester.pumpWidget(StichtagApp(store: store, appLock: lock));
+    await tester.pumpAndSettle();
+    expect(find.text('Stichtag ist gesperrt'), findsOneWidget);
+
+    allow = true;
+    await tester.tap(find.text('Entsperren'));
+    await tester.pumpAndSettle();
+    expect(find.text('Stichtag ist gesperrt'), findsNothing);
+    expect(find.text('QR-Code scannen'), findsOneWidget);
   });
 
   test('ohne Verbindung zeigt die App den letzten Stand und sendet später', () async {

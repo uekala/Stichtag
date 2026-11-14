@@ -24,6 +24,7 @@ Die Ordner `android/` und `ios/` liegen nicht im Repository. `tool/bootstrap-pla
 | `lib/core` | Fälligkeitsregeln, Kopplungscode, HTTPS-Client, Sitzungsspeicher, Datenhaltung |
 | `lib/features` | Bildschirme: Kopplung, Heute, Protokolle, Verlauf, Körper, Vials & Rechner, Mehr |
 | `test` | Tests für Regeln, Kopplungscode und die wichtigsten Abläufe |
+| `tool` | Erzeugt und konfiguriert die Plattformordner: App-Zeichen, Signatur, App-Sperre |
 
 Die App speichert nur Serveradresse und Gerätetoken, und zwar im Schlüsselspeicher des Handys. Die Daten selbst
 bleiben auf dem Server.

@@ -23,6 +23,8 @@ class StatsView extends StatelessWidget {
       for (final entry in feelSeries(state, today))
         ChartPoint(entry.key, entry.value),
     ];
+    final tags = tagCounts(state, today);
+    final maxTag = tags.isEmpty ? 1 : tags.first.value;
     final sites = siteCounts(state, today);
     final maxSite = sites.values.fold<int>(1, (a, b) => a > b ? a : b);
 
@@ -152,6 +154,49 @@ class StatsView extends StatelessWidget {
                   emptyText:
                       'Ab zwei Tagen mit Angabe erscheint hier die Kurve.',
                 ),
+              ],
+            ),
+          ),
+        ),
+        title('Nebenwirkungen'),
+        Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Wie oft angekreuzt, letzte 30 Tage',
+                  style: theme.textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                if (tags.isEmpty) const Text('Keine Nebenwirkungen eingetragen.'),
+                for (final entry in tags)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Expanded(flex: 5, child: Text(entry.key)),
+                        Expanded(
+                          flex: 5,
+                          child: LinearProgressIndicator(
+                            value: entry.value / maxTag,
+                            minHeight: 8,
+                            borderRadius: BorderRadius.circular(4),
+                            color: colors.tertiary,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 32,
+                          child: Text(
+                            '${entry.value}',
+                            textAlign: TextAlign.end,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),

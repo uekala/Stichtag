@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'core/app_lock.dart';
 import 'core/app_store.dart';
 import 'core/session_store.dart';
 import 'features/home_shell.dart';
@@ -30,15 +31,20 @@ ThemeData buildTheme(Brightness brightness) => ThemeData(
 );
 
 class StichtagApp extends StatefulWidget {
-  const StichtagApp({super.key, required this.store});
+  const StichtagApp({super.key, required this.store, this.appLock});
 
   final AppStore store;
+
+  /// Sperre per Fingerabdruck; Tests geben ihre eigene mit.
+  final AppLock? appLock;
 
   @override
   State<StichtagApp> createState() => _StichtagAppState();
 }
 
 class _StichtagAppState extends State<StichtagApp> with WidgetsBindingObserver {
+  late final AppLock _lock = widget.appLock ?? AppLock();
+
   @override
   void initState() {
     super.initState();
@@ -68,6 +74,9 @@ class _StichtagAppState extends State<StichtagApp> with WidgetsBindingObserver {
       locale: const Locale('de'),
       supportedLocales: const [Locale('de')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      // Über dem Navigator, damit die Sperre auch offene Seiten verdeckt.
+      builder: (context, child) =>
+          AppLockGate(lock: _lock, child: child ?? const SizedBox.shrink()),
       home: ListenableBuilder(
         listenable: store,
         builder: (context, _) {
@@ -77,7 +86,7 @@ class _StichtagAppState extends State<StichtagApp> with WidgetsBindingObserver {
             );
           }
           if (!store.paired) return PairingPage(store: store);
-          return HomeShell(store: store);
+          return HomeShell(store: store, appLock: _lock);
         },
       ),
     );

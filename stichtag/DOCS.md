@@ -8,9 +8,9 @@ Die Oberfläche öffnest du über den Eintrag **Stichtag** in der Seitenleiste.
 - **Protokolle**: Peptid, Dosis, Rhythmus, Startdatum, Uhrzeit, Zykluslänge, optional Dosisstufen ab einer Woche
 - **Verlauf**: alle Einträge, filterbar nach Peptid, mit Bearbeiten
 - **Auswertung**: Einhaltung über 8 Wochen, Zahlen je Peptid, Befinden, Stellen
-- **Körper**: Gewicht, Bauchumfang, Körperfett mit Verlaufskurve
+- **Körper**: Gewicht, Bauchumfang, Körperfett mit Verlaufskurve; auf Wunsch mit Markierungen, ab wann eine andere Dosis eingetragen wurde
 - **Vials & Rechner**: Vorrat und Haltbarkeit pro Vial, Misch-Rechner für U-100-Spritzen
-- **Daten**: Erinnerungen, Handy-App, Injektionsstellen, Export, Import
+- **Daten**: Erinnerungen, Handy-App, Injektionsstellen, Liste der Nebenwirkungen, Export, Import
 
 ## Erinnerungen
 
@@ -34,6 +34,36 @@ Stichtag legt drei Sensoren in Home Assistant an und hält sie aktuell:
 | `sensor.stichtag_offene_dosen` | Zahl der heute noch offenen Dosen | `faellig`, `erledigt`, `offen` (Namen) |
 | `sensor.stichtag_einhaltung_7_tage` | Einhaltung der letzten 7 Tage in Prozent | `faellig`, `erledigt` |
 | `sensor.stichtag_naechste_dosis` | zum Beispiel „Heute 20:00 Name“ | `peptid`, `dosis`, `datum`, `uhrzeit` |
+
+### Karten fürs Dashboard
+
+Im Dashboard **Karte hinzufügen → Manuell** wählen und einfügen:
+
+```yaml
+type: entities
+title: Stichtag
+entities:
+  - entity: sensor.stichtag_naechste_dosis
+    name: Nächste Dosis
+  - entity: sensor.stichtag_offene_dosen
+    name: Heute offen
+  - entity: sensor.stichtag_einhaltung_7_tage
+    name: Einhaltung 7 Tage
+```
+
+Die Einhaltung als Anzeige:
+
+```yaml
+type: gauge
+entity: sensor.stichtag_einhaltung_7_tage
+name: Einhaltung 7 Tage
+min: 0
+max: 100
+severity:
+  green: 90
+  yellow: 70
+  red: 0
+```
 
 Die Sensoren eignen sich für Dashboards und Automationen. Sie haben keine eindeutige ID und lassen sich deshalb
 nicht in der Oberfläche umbenennen. Nach einem Neustart von Home Assistant erscheinen sie innerhalb einer Minute

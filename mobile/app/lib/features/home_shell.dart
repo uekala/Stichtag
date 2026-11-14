@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_lock.dart';
 import '../core/app_store.dart';
 import 'body_page.dart';
 import 'editors.dart';
@@ -10,9 +11,10 @@ import 'today_page.dart';
 import 'widgets.dart';
 
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, required this.store});
+  const HomeShell({super.key, required this.store, required this.appLock});
 
   final AppStore store;
+  final AppLock appLock;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -62,7 +64,7 @@ class _HomeShellState extends State<HomeShell> {
       case 3:
         return BodyPage(store: store);
       default:
-        return MorePage(store: store);
+        return MorePage(store: store, appLock: widget.appLock);
     }
   }
 

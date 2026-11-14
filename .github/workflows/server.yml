@@ -1,0 +1,31 @@
+name: Server
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "stichtag/**"
+      - "tests/**"
+      - ".github/workflows/server.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "stichtag/**"
+      - "tests/**"
+      - ".github/workflows/server.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Server tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Run tests
+        run: python3 -m unittest discover -s tests -v

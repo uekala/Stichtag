@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0
+
+- Nebenwirkungen: beim Eintragen aus einer eigenen Liste ankreuzen (Liste unter Daten), mit Zählung in der Auswertung
+- Körper: Die Kurve zeigt als gestrichelte Linien, ab wann eine andere Dosis eingetragen wurde
+- Dokumentation: fertige Dashboard-Karten für die drei Sensoren
+- Automatische Tests für den Server
+
 ## 1.3.1
 
 - Dosen werden nur noch in mg eingegeben; die Auswahl der Einheit entfällt. Alte Einträge in mcg rechnet das Formular beim Bearbeiten um

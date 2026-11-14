@@ -89,6 +89,8 @@ dialog form{display:flex;flex-direction:column;gap:12px;padding:18px}
 .chart .area{fill:var(--accent);opacity:.12}
 .chart .pt{fill:var(--surface);stroke:var(--accent);stroke-width:2}
 .chart .end{fill:var(--accent)}
+.chart .mark{stroke:var(--warn);stroke-width:1.5;stroke-dasharray:4 3}
+.chart text.marktext{fill:var(--warn)}
 .up{color:var(--warn)} .down{color:var(--ok)}
 .qr{max-width:240px;background:#fff;padding:8px;border-radius:8px}
 .qr svg{width:100%;height:auto;display:block}
@@ -149,10 +151,11 @@ const WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
 const deDate=s=>{const d=parseYmd(s);return WD[d.getDay()]+', '+pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear()};
 const NAMES=["BPC-157", "TB-500", "Semaglutid", "Tirzepatid", "Retatrutid", "CJC-1295", "Ipamorelin", "Sermorelin", "Tesamorelin", "GHK-Cu", "MOTS-c", "Epitalon", "AOD-9604", "PT-141", "Melanotan II", "Selank", "Semax", "Thymosin Alpha-1", "KPV", "Kisspeptin"];
 const nameOpts=()=>[...new Set([...state.protocols.map(p=>p.name),...state.logs.map(l=>l.name).reverse(),...NAMES].filter(Boolean))].map(n=>`<option value="${esc(n)}">`).join('');
+const DEFAULT_TAGS=["Übelkeit", "Müdigkeit", "Kopfschmerzen", "Wenig Appetit", "Sodbrennen", "Rötung an der Stelle"];
 const DEFAULT_SITES=['Bauch links','Bauch rechts','Oberschenkel links','Oberschenkel rechts','Flanke links','Flanke rechts'];
 const LS='peptid-tracker-v1';
 
-function blank(){return{v:1,rev:0,demo:false,protocols:[],logs:[],vials:[],body:[],sites:DEFAULT_SITES.slice(),settings:{notify:'',followup:0,lowvial:true}}}
+function blank(){return{v:1,rev:0,demo:false,protocols:[],logs:[],vials:[],body:[],sites:DEFAULT_SITES.slice(),tags:DEFAULT_TAGS.slice(),settings:{notify:'',followup:0,lowvial:true}}}
 function demoState(){
   const t=today(),s=blank();s.demo=true;
   const v={id:uid(),demo:true,name:'Beispiel A',mg:5,ml:2,mixed:addDays(t,-6),days:28};
@@ -160,12 +163,12 @@ function demoState(){
   const b={id:uid(),demo:true,name:'Beispiel B',dose:2,unit:'mg',type:'weekdays',n:2,days:[parseYmd(t).getDay()],start:addDays(t,-21),weeks:0,time:'20:00',active:true,vialId:''};
   s.vials=[v];s.protocols=[a,b];
   [6,5,4,2,1].forEach((k,i)=>s.logs.push({id:uid(),demo:true,ts:addDays(t,-k)+'T08:0'+i,pid:a.id,name:a.name,dose:0.25,unit:'mg',site:DEFAULT_SITES[i%4],feel:4,note:'',vialId:v.id}));
-  s.logs.push({id:uid(),demo:true,ts:addDays(t,-7)+'T20:10',pid:b.id,name:b.name,dose:2,unit:'mg',site:DEFAULT_SITES[4],feel:3,note:'Beispieleintrag',vialId:''});
+  s.logs.push({id:uid(),demo:true,ts:addDays(t,-7)+'T20:10',pid:b.id,name:b.name,dose:2,unit:'mg',site:DEFAULT_SITES[4],feel:3,note:'Beispieleintrag',vialId:'',tags:['Müdigkeit']});
   [[21,84.2,92],[14,83.9,91.5],[7,83.5,91],[0,83.1,90]].forEach(x=>s.body.push({id:uid(),demo:true,date:addDays(t,-x[0]),weight:x[1],waist:x[2],fat:0,note:''}));
   return s;
 }
 function normalize(o){const b=blank();if(!o||typeof o!=='object')return b;
-  return{v:1,rev:+o.rev||0,demo:!!o.demo,protocols:Array.isArray(o.protocols)?o.protocols:[],logs:Array.isArray(o.logs)?o.logs:[],vials:Array.isArray(o.vials)?o.vials:[],body:Array.isArray(o.body)?o.body:[],sites:Array.isArray(o.sites)&&o.sites.length?o.sites.map(String):b.sites,settings:{notify:String((o.settings||{}).notify||''),followup:Math.max(0,Math.round(+(o.settings||{}).followup)||0),lowvial:(o.settings||{}).lowvial!==false}}}
+  return{v:1,rev:+o.rev||0,demo:!!o.demo,protocols:Array.isArray(o.protocols)?o.protocols:[],logs:Array.isArray(o.logs)?o.logs:[],vials:Array.isArray(o.vials)?o.vials:[],body:Array.isArray(o.body)?o.body:[],sites:Array.isArray(o.sites)&&o.sites.length?o.sites.map(String):b.sites,tags:Array.isArray(o.tags)?o.tags.map(String):b.tags,settings:{notify:String((o.settings||{}).notify||''),followup:Math.max(0,Math.round(+(o.settings||{}).followup)||0),lowvial:(o.settings||{}).lowvial!==false}}}
 
 let state=blank(),mobile=null,pairing=null,services=null,saving=false,dirty=false,loaded=false;
 function setSync(t){$('#sync').textContent=t}
@@ -247,7 +250,7 @@ function adherence(day){
 /* ---------- Ansichten ---------- */
 const VIEWS=['heute','plan','verlauf','auswertung','koerper','vials','daten'];
 const METRICS={weight:['Gewicht','kg'],waist:['Bauchumfang','cm'],fat:['Körperfett','%']};
-let bmetric='weight';
+let bmetric='weight',bmark=null;
 let verlaufFilter='';
 function current(){const h=location.hash.replace('#','');return VIEWS.includes(h)?h:'heute'}
 function render(){
@@ -307,9 +310,13 @@ function vAuswertung(){
   const sc={};state.logs.forEach(l=>{if(l.site&&l.ts.slice(0,10)>=from30)sc[l.site]=(sc[l.site]||0)+1});
   const sites=[...new Set([...state.sites,...Object.keys(sc)])],max=Math.max(1,...Object.values(sc));
   const sbars=sites.map(x=>`<div class="hbar"><span>${esc(x)}</span><div class="bar"><i style="width:${((sc[x]||0)/max*100).toFixed(1)}%"></i></div><span class="num">${sc[x]||0}</span></div>`).join('');
+  const tc={};let tagged=0;state.logs.forEach(l=>{if(l.ts.slice(0,10)>=from30&&(l.tags||[]).length){tagged++;l.tags.forEach(x=>tc[x]=(tc[x]||0)+1)}});
+  const n30=state.logs.filter(l=>l.ts.slice(0,10)>=from30).length,tmax=Math.max(1,...Object.values(tc));
+  const tbars=Object.keys(tc).sort((a,b)=>tc[b]-tc[a]).map(x=>`<div class="hbar"><span>${esc(x)}</span><div class="bar low"><i style="width:${(tc[x]/tmax*100).toFixed(1)}%"></i></div><span class="num">${tc[x]}</span></div>`).join('');
   return `<section><h2>Einhaltung</h2><div class="card"><div class="row"><span class="muted">Letzte 8 Wochen, je 7 Tage ab dem angegebenen Datum</span><span class="num">${tot.due?Math.round(tot.done/tot.due*100)+' % gesamt':'–'}</span></div><div class="bars">${bars}</div></div></section>
   <section><h2>Je Peptid</h2>${peps||`<div class="card"><span class="muted">Noch keine Einträge.</span></div>`}</section>
   <section><h2>Befinden</h2><div class="card"><span class="muted">Mittelwert je Tag, letzte 60 Tage (1 = schlecht, 5 = sehr gut)</span>${fpts.length<2?`<span class="muted">Ab zwei Tagen mit Angabe erscheint hier die Kurve.</span>`:chart(fpts,'Befinden')}</div></section>
+  <section><h2>Nebenwirkungen</h2><div class="card"><span class="muted">Letzte 30 Tage: ${tagged} von ${nE(n30)} mit Angabe</span>${tbars||`<span class="muted">Keine Nebenwirkungen eingetragen.</span>`}</div></section>
   <section><h2>Stellen</h2><div class="card"><span class="muted">Einträge je Stelle in den letzten 30 Tagen</span>${sbars||`<span class="muted">Keine Stellen angelegt.</span>`}</div></section>`;
 }
 function vPlan(){
@@ -328,13 +335,21 @@ function vVerlauf(){
   const logs=state.logs.filter(l=>!verlaufFilter||l.name===verlaufFilter).sort((a,b)=>b.ts.localeCompare(a.ts));
   let html='',day='';
   logs.forEach(l=>{const d=l.ts.slice(0,10);if(d!==day){if(day)html+='</div>';day=d;html+=`<div class="card"><span class="muted">${deDate(d)}</span>`}
-    html+=`<div class="row"><span><strong>${esc(l.name)}</strong> <span class="num">${fmt(l.dose,3)} ${esc(l.unit)}</span><br><span class="muted">${esc(l.ts.slice(11))} Uhr${l.site?' · '+esc(l.site):''}${l.feel?' · Befinden '+l.feel+'/5':''}${l.note?' · '+esc(l.note):''}</span></span><span><button class="ghost" data-act="edit-log" data-id="${l.id}">Bearbeiten</button><button class="ghost danger" data-act="del" data-kind="logs" data-id="${l.id}">Löschen</button></span></div>`});
+    html+=`<div class="row"><span><strong>${esc(l.name)}</strong> <span class="num">${fmt(l.dose,3)} ${esc(l.unit)}</span><br><span class="muted">${esc(l.ts.slice(11))} Uhr${l.site?' · '+esc(l.site):''}${l.feel?' · Befinden '+l.feel+'/5':''}${(l.tags||[]).length?' · '+l.tags.map(esc).join(', '):''}${l.note?' · '+esc(l.note):''}</span></span><span><button class="ghost" data-act="edit-log" data-id="${l.id}">Bearbeiten</button><button class="ghost danger" data-act="del" data-kind="logs" data-id="${l.id}">Löschen</button></span></div>`});
   if(day)html+='</div>';
   return `<section><div class="row"><h2>Verlauf</h2><span class="muted">${nE(logs.length)}</span></div>
   <label>Filter<select id="vfilter"><option value="">Alle Peptide</option>${names.map(n=>`<option ${n===verlaufFilter?'selected':''}>${esc(n)}</option>`).join('')}</select></label>
   ${html||`<div class="card"><span class="muted">Noch keine Einträge.</span></div>`}</section>`;
 }
-function chart(pts,unit){
+/* Tage, an denen sich die eingetragene Dosis eines Peptids geändert hat (in mg, alte mcg umgerechnet). */
+function doseChanges(name){
+  let prev=null;const out=[];
+  state.logs.filter(l=>l.name===name).sort((a,b)=>a.ts.localeCompare(b.ts)).forEach(l=>{
+    const u=l.unit==='mcg'?'mg':l.unit,d=l.unit==='mcg'?l.dose/1000:+l.dose;
+    if(prev===null||Math.abs(d-prev)>1e-9)out.push({date:l.ts.slice(0,10),label:fmt(d,3)+' '+u});prev=d});
+  return out;
+}
+function chart(pts,unit,marks){
   if(pts.length<2)return `<span class="muted">Ab zwei Messwerten erscheint hier die Kurve.</span>`;
   const W=560,H=200,L=50,R=14,T=14,B=26,xs=pts.map(p=>parseYmd(p.date).getTime()),ys=pts.map(p=>p.v);
   const mn=Math.min(...ys),mx=Math.max(...ys);let lo=mn,hi=mx;if(hi-lo<1e-9){lo-=1;hi+=1}else{const d=(hi-lo)*.15;lo-=d;hi+=d}
@@ -345,18 +360,24 @@ function chart(pts,unit){
   ${ticks.map(v=>`<line class="grid" x1="${L}" x2="${W-R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text x="${L-6}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end">${fmt(v,1)}</text>`).join('')}
   <path class="area" d="${path} L${c[c.length-1][0]} ${H-B} L${c[0][0]} ${H-B} Z"/><path class="line" d="${path}"/>
   ${c.map((q,i)=>`<circle class="${i===c.length-1?'end':'pt'}" cx="${q[0]}" cy="${q[1]}" r="${i===c.length-1?5:3}"/>`).join('')}
+  ${(marks||[]).map(m=>({m,t:parseYmd(m.date).getTime()})).filter(o=>o.t>=x0&&o.t<=x1).map(o=>{const x=X(o.t),end=x>W-R-70;return `<line class="mark" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T}" y2="${H-B}"><title>${esc(o.m.label)} ab ${dm(o.m.date)}</title></line><text class="marktext" x="${(x+(end?-4:4)).toFixed(1)}" y="${T+10}" text-anchor="${end?'end':'start'}">${esc(o.m.label)}</text>`}).join('')}
   <text x="${L}" y="${H-6}">${dm(pts[0].date)}</text><text x="${W-R}" y="${H-6}" text-anchor="end">${dm(pts[pts.length-1].date)}</text></svg>`;
 }
 function vKoerper(){
   const m=METRICS[bmetric],all=state.body.slice().sort((a,b)=>a.date.localeCompare(b.date));
   const pts=all.filter(b=>b[bmetric]>0).map(b=>({date:b.date,v:b[bmetric]}));
   const last=pts[pts.length-1],diff=pts.length>1?last.v-pts[0].v:0;
+  const cnt={};state.logs.forEach(l=>cnt[l.name]=(cnt[l.name]||0)+1);const names=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]);
+  if(bmark===null||(bmark&&!cnt[bmark]))bmark=names[0]||'';
   const list=all.slice().reverse().map(b=>`<div class="row"><span><strong>${deDate(b.date)}</strong><br><span class="num">${[b.weight>0?fmt(b.weight,1)+' kg':'',b.waist>0?fmt(b.waist,1)+' cm':'',b.fat>0?fmt(b.fat,1)+' %':''].filter(Boolean).join(' · ')}</span>${b.note?` <span class="muted">· ${esc(b.note)}</span>`:''}</span>
   <span><button class="ghost" data-act="edit-b" data-id="${b.id}">Bearbeiten</button><button class="ghost danger" data-act="del" data-kind="body" data-id="${b.id}">Löschen</button></span></div>`).join('');
   return `<section><div class="row"><h2>Körperwerte</h2><button class="primary" data-act="edit-b" data-id="">Messung eintragen</button></div>
   <div class="summary"><div class="card"><span class="muted">${m[0]} aktuell</span><span class="big">${last?fmt(last.v,1)+' '+m[1]:'–'}</span></div>
   <div class="card"><span class="muted">Seit erster Messung</span><span class="big ${diff>0?'up':diff<0?'down':''}">${pts.length>1?(diff>0?'+':'')+fmt(diff,1)+' '+m[1]:'–'}</span></div></div>
-  <div class="card"><label>Kurve für<select id="bmetric">${Object.keys(METRICS).map(k=>`<option value="${k}" ${k===bmetric?'selected':''}>${METRICS[k][0]} (${METRICS[k][1]})</option>`).join('')}</select></label>${chart(pts,m[1])}</div></section>
+  <div class="card"><label>Kurve für<select id="bmetric">${Object.keys(METRICS).map(k=>`<option value="${k}" ${k===bmetric?'selected':''}>${METRICS[k][0]} (${METRICS[k][1]})</option>`).join('')}</select></label>
+  ${names.length?`<label>Dosis einblenden<select id="bmark"><option value="">Keine</option>${names.map(n=>`<option ${n===bmark?'selected':''}>${esc(n)}</option>`).join('')}</select></label>`:''}
+  ${chart(pts,m[1],bmark?doseChanges(bmark):[])}
+  ${bmark&&pts.length>1?`<span class="muted">Gestrichelte Linien zeigen, ab wann eine andere Dosis von ${esc(bmark)} eingetragen wurde.</span>`:''}</div></section>
   <section><h2>Messungen</h2><div class="card">${list||`<span class="muted">Noch keine Messung eingetragen.</span>`}</div></section>`;
 }
 function dlgBody(id){
@@ -392,6 +413,7 @@ function calc(){
 }
 function vDaten(){
   return `<section><h2>Injektionsstellen</h2><div class="card"><label>Eine Stelle pro Zeile. Die Rotation schlägt immer die am längsten nicht benutzte vor.<textarea id="sites">${esc(state.sites.join('\n'))}</textarea></label><div class="actions"><button data-act="save-sites">Stellen speichern</button></div></div></section>
+  <section><h2>Nebenwirkungen</h2><div class="card"><label>Eine pro Zeile. Die Liste erscheint beim Eintragen einer Dosis zum Ankreuzen.<textarea id="tags">${esc(state.tags.join('\n'))}</textarea></label><div class="actions"><button data-act="save-tags">Liste speichern</button></div></div></section>
   <section><h2>Erinnerungen</h2><div class="card">
   <label>Benachrichtigen über<select id="r-notify"><option value="">Aus</option>${[...new Set([...(services||[]),state.settings.notify].filter(Boolean))].map(s=>`<option ${s===state.settings.notify?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
   <label>Nochmal erinnern nach (Minuten, 0 = nie)<input id="r-follow" inputmode="numeric" value="${state.settings.followup||0}"></label>
@@ -422,11 +444,12 @@ function dlgLog(pid,lid){
   <div class="grid2"><label>Stelle<select id="f-site"><option value="">Keine Angabe</option>${[...new Set([...state.sites,site].filter(Boolean))].map(s=>`<option ${s===site?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
   <label>Vial<select id="f-vial">${vialOpts(p.vialId||'')}</select></label></div>
   <label>Befinden<select id="f-feel">${['Keine Angabe','1 · schlecht','2','3 · neutral','4','5 · sehr gut'].map((x,i)=>`<option value="${i}" ${i===feel?'selected':''}>${x}</option>`).join('')}</select></label>
+  ${(ts=>ts.length?`<span class="muted">Nebenwirkungen</span><div class="checks" id="f-tags">${ts.map(x=>`<label><input type="checkbox" value="${esc(x)}" ${l&&(l.tags||[]).includes(x)?'checked':''}>${esc(x)}</label>`).join('')}</div>`:'')([...new Set([...state.tags,...(l&&l.tags||[])])])}
   <label>Notiz<input id="f-note" value="${esc(l?l.note:'')}"></label>${foot(l?'Speichern':'Eintragen')}`);
 }
 function quickLog(pid){
   const p=state.protocols.find(x=>x.id===pid);if(!p)return;
-  const id=uid();state.logs.push({id,ts:nowLocal(),pid:p.id,name:p.name,dose:doseOn(p,today()),unit:p.unit,site:nextSite(),feel:0,note:'',vialId:p.vialId||''});
+  const id=uid();state.logs.push({id,ts:nowLocal(),pid:p.id,name:p.name,dose:doseOn(p,today()),unit:p.unit,site:nextSite(),feel:0,note:'',vialId:p.vialId||'',tags:[]});
   save();render();toast('Eingetragen: '+p.name,id);
 }
 let toastTimer=null,undoId='';
@@ -464,7 +487,7 @@ form.addEventListener('submit',ev=>{
     const dose=num(val('f-dose')),name=val('f-name').trim();if(!name||!(dose>0))return err('Bitte Peptid und eine Dosis größer als 0 angeben.');
     let pid=val('f-pid');const pr=state.protocols.find(p=>p.id===pid);
     if(!pr||pr.name!==name){const m=state.protocols.find(p=>p.name.toLowerCase()===name.toLowerCase());pid=m?m.id:''}
-    const rec={ts:val('f-ts')||nowLocal(),pid,name,dose,unit:val('f-unit'),site:val('f-site'),feel:+val('f-feel')||0,note:val('f-note').trim(),vialId:val('f-vial')},old=state.logs.find(l=>l.id===val('f-lid'));
+    const rec={ts:val('f-ts')||nowLocal(),pid,name,dose,unit:val('f-unit'),site:val('f-site'),feel:+val('f-feel')||0,note:val('f-note').trim(),vialId:val('f-vial'),tags:[...form.querySelectorAll('#f-tags input:checked')].map(i=>i.value)},old=state.logs.find(l=>l.id===val('f-lid'));
     if(old)Object.assign(old,rec);else state.logs.push({id:uid(),...rec});
   }else if(k==='protocol'){
     const dose=num(val('f-dose')),name=val('f-name').trim(),type=val('f-type');if(!name||!(dose>0)||!val('f-start'))return err('Bitte Peptid, Dosis und Startdatum angeben.');
@@ -504,6 +527,7 @@ document.addEventListener('click',async e=>{
   else if(a==='wipe')dlgConfirm('Wirklich alle Daten löschen? Das lässt sich nicht rückgängig machen.','all','');
   else if(a==='clear-demo'){['protocols','logs','vials','body'].forEach(k=>state[k]=state[k].filter(x=>!x.demo));state.demo=false;save();render()}
   else if(a==='vial-calc'){const v=state.vials.find(x=>x.id===id);if(v){$('#c-mg').value=v.mg;if(v.ml)$('#c-ml').value=v.ml;calc();$('#c-mg').scrollIntoView({block:'center'})}}
+  else if(a==='save-tags'){state.tags=[...new Set($('#tags').value.split('\n').map(x=>x.trim()).filter(Boolean))];save();render()}
   else if(a==='save-sites'){const s=$('#sites').value.split('\n').map(x=>x.trim()).filter(Boolean);state.sites=[...new Set(s)];save();render()}
   else if(a==='save-rem'){state.settings={notify:$('#r-notify').value,followup:Math.max(0,Math.round(num($('#r-follow').value))||0),lowvial:$('#r-lowvial').checked};save();render();$('#r-msg').textContent='Gespeichert.'}
   else if(a==='test-notify'){const s=$('#r-notify').value,m=$('#r-msg');if(!s){m.textContent='Bitte zuerst einen Dienst wählen.';return}m.textContent='Sendet …';
@@ -519,7 +543,7 @@ document.addEventListener('click',async e=>{
   else if(a==='import'){try{const o=JSON.parse($('#io').value);if(!o||!Array.isArray(o.logs)||!Array.isArray(o.protocols))throw 0;state=Object.assign(normalize(o),{rev:state.rev,settings:state.settings});save();render()}catch(x){$('#io-msg').textContent='Das ist kein gültiger Export. Füge das komplette JSON aus „Export kopieren“ ein.'}}
 });
 document.addEventListener('input',e=>{if(e.target.id&&e.target.id.startsWith('c-'))calc()});
-document.addEventListener('change',e=>{if(e.target.id==='vfilter'){verlaufFilter=e.target.value;render()}else if(e.target.id==='bmetric'){bmetric=e.target.value;render()}});
+document.addEventListener('change',e=>{if(e.target.id==='vfilter'){verlaufFilter=e.target.value;render()}else if(e.target.id==='bmetric'){bmetric=e.target.value;render()}else if(e.target.id==='bmark'){bmark=e.target.value;render()}});
 window.addEventListener('hashchange',render);
 load();
 loadServices();

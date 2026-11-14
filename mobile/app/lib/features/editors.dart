@@ -108,6 +108,7 @@ class _LogEditorState extends State<LogEditor> {
   late String _date;
   late String _time;
   int _feel = 0;
+  final _tags = <String>{};
   String? _nameError;
   String? _doseError;
 
@@ -151,6 +152,7 @@ class _LogEditorState extends State<LogEditor> {
     _time = stamp.substring(11, 16);
     if (log != null) {
       _feel = toInt(log['feel']).clamp(0, 5).toInt();
+      _tags.addAll(logTags(log));
       _note.text = str(log['note']);
     }
   }
@@ -194,6 +196,7 @@ class _LogEditorState extends State<LogEditor> {
         'feel': _feel,
         'note': _note.text.trim(),
         'vialId': _vial,
+        'tags': _tags.toList(),
       };
       final logs = items(state, 'logs');
       final id = str(widget.existing?['id']);
@@ -275,6 +278,34 @@ class _LogEditorState extends State<LogEditor> {
           },
           onChanged: (v) => setState(() => _feel = v),
         ),
+        if (tagsOf(state).isNotEmpty || _tags.isNotEmpty)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Nebenwirkungen',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final tag in <String>{...tagsOf(state), ..._tags})
+                    FilterChip(
+                      label: Text(tag),
+                      selected: _tags.contains(tag),
+                      onSelected: (selected) => setState(() {
+                        if (selected) {
+                          _tags.add(tag);
+                        } else {
+                          _tags.remove(tag);
+                        }
+                      }),
+                    ),
+                ],
+              ),
+            ],
+          ),
         TextField(
           controller: _note,
           decoration: const InputDecoration(labelText: 'Notiz'),

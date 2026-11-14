@@ -11,6 +11,14 @@ const defaultSites = <String>[
   'Flanke links',
   'Flanke rechts',
 ];
+const defaultTags = <String>[
+  'Übelkeit',
+  'Müdigkeit',
+  'Kopfschmerzen',
+  'Wenig Appetit',
+  'Sodbrennen',
+  'Rötung an der Stelle',
+];
 const weekdayShort = <String>['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 const doseUnits = <String>['mcg', 'mg', 'IE'];
 
@@ -97,6 +105,7 @@ Json blankState() => <String, dynamic>{
   'vials': <Json>[],
   'body': <Json>[],
   'sites': List<String>.from(defaultSites),
+  'tags': List<String>.from(defaultTags),
   'settings': <String, dynamic>{'notify': '', 'followup': 0},
 };
 
@@ -118,6 +127,10 @@ Json normalizeState(Object? raw) {
   if (sites is List && sites.isNotEmpty) {
     state['sites'] = sites.map((entry) => entry.toString()).toList();
   }
+  final tags = raw['tags'];
+  if (tags is List) {
+    state['tags'] = tags.map((entry) => entry.toString()).toList();
+  }
   final settings = raw['settings'];
   if (settings is Map) {
     state['settings'] = Map<String, dynamic>.from(settings);
@@ -128,6 +141,17 @@ Json normalizeState(Object? raw) {
 List<Json> items(Json state, String key) => state[key] as List<Json>;
 
 List<String> sitesOf(Json state) => state['sites'] as List<String>;
+
+/// Die selbst gepflegte Liste der Nebenwirkungen zum Ankreuzen.
+List<String> tagsOf(Json state) => state['tags'] as List<String>;
+
+/// Die bei einem Eintrag angekreuzten Nebenwirkungen.
+List<String> logTags(Json log) {
+  final tags = log['tags'];
+  return tags is List
+      ? tags.map((entry) => entry.toString()).toList()
+      : <String>[];
+}
 
 Json? firstOrNull(Iterable<Json> entries, bool Function(Json entry) test) {
   for (final entry in entries) {
@@ -514,4 +538,57 @@ int? vialDaysLeft(Json vial, String today) {
   final mixed = str(vial['mixed']);
   if (days <= 0 || tryParseYmd(mixed) == null) return null;
   return dayDiff(today, addDays(mixed, days));
+}
+
+/// Wie oft jede Nebenwirkung in den letzten [days] Tagen angekreuzt wurde,
+/// die häufigste zuerst.
+List<MapEntry<String, int>> tagCounts(
+  Json state,
+  String today, [
+  int days = 30,
+]) {
+  final from = addDays(today, -(days - 1));
+  final counts = <String, int>{};
+  for (final log in items(state, 'logs')) {
+    final stamp = str(log['ts']);
+    if (stamp.length < 10 || stamp.substring(0, 10).compareTo(from) < 0) {
+      continue;
+    }
+    for (final tag in logTags(log)) {
+      counts[tag] = (counts[tag] ?? 0) + 1;
+    }
+  }
+  return counts.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+}
+
+/// Namen aus dem Verlauf, der am häufigsten eingetragene zuerst.
+List<String> namesByUse(Json state) {
+  final counts = <String, int>{};
+  for (final log in items(state, 'logs')) {
+    final name = str(log['name']);
+    if (name.isNotEmpty) counts[name] = (counts[name] ?? 0) + 1;
+  }
+  return counts.keys.toList()..sort((a, b) => counts[b]!.compareTo(counts[a]!));
+}
+
+/// Tage, an denen sich die eingetragene Dosis eines Peptids geändert hat, mit
+/// der neuen Dosis als Text. Alte Einträge in mcg zählen in mg.
+List<MapEntry<String, String>> doseChanges(Json state, String name) {
+  final logs =
+      items(state, 'logs').where((log) => str(log['name']) == name).toList()
+        ..sort((a, b) => str(a['ts']).compareTo(str(b['ts'])));
+  final result = <MapEntry<String, String>>[];
+  double? previous;
+  for (final log in logs) {
+    final stamp = str(log['ts']);
+    if (stamp.length < 10) continue;
+    final legacy = log['unit'] == 'mcg';
+    final dose = legacy ? toDouble(log['dose']) / 1000 : toDouble(log['dose']);
+    final unit = legacy ? 'mg' : str(log['unit']);
+    if (previous == null || (dose - previous).abs() > 1e-9) {
+      result.add(MapEntry(stamp.substring(0, 10), '${fmtNum(dose, 3)} $unit'));
+    }
+    previous = dose;
+  }
+  return result;
 }

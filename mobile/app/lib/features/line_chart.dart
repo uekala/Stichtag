@@ -12,12 +12,26 @@ class ChartPoint {
   final double value;
 }
 
+/// Senkrechte Markierung an einem Tag, zum Beispiel eine neue Dosis.
+class ChartMark {
+  const ChartMark(this.day, this.label);
+
+  final String day;
+  final String label;
+}
+
 /// Verlaufskurve mit Hilfslinien am kleinsten und größten Wert.
 class LineChart extends StatelessWidget {
-  const LineChart({super.key, required this.points, required this.emptyText});
+  const LineChart({
+    super.key,
+    required this.points,
+    required this.emptyText,
+    this.marks = const <ChartMark>[],
+  });
 
   final List<ChartPoint> points;
   final String emptyText;
+  final List<ChartMark> marks;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +44,8 @@ class LineChart extends StatelessWidget {
         size: Size.infinite,
         painter: _ChartPainter(
           points: valid,
+          marks: marks,
+          mark: colors.tertiary,
           line: colors.primary,
           grid: colors.outlineVariant,
           text: colors.onSurfaceVariant,
@@ -43,6 +59,8 @@ class LineChart extends StatelessWidget {
 class _ChartPainter extends CustomPainter {
   _ChartPainter({
     required this.points,
+    required this.marks,
+    required this.mark,
     required this.line,
     required this.grid,
     required this.text,
@@ -50,6 +68,8 @@ class _ChartPainter extends CustomPainter {
   });
 
   final List<ChartPoint> points;
+  final List<ChartMark> marks;
+  final Color mark;
   final Color line;
   final Color grid;
   final Color text;
@@ -131,6 +151,28 @@ class _ChartPainter extends CustomPainter {
       }
     }
 
+    // Markierungen als gestrichelte Linien innerhalb des gezeigten Zeitraums.
+    final markPaint = Paint()
+      ..color = mark
+      ..strokeWidth = 1.5;
+    for (final entry in marks) {
+      final date = tryParseYmd(entry.day);
+      if (date == null) continue;
+      final offset = date.difference(first).inDays;
+      if (offset < 0 || offset > total) continue;
+      final mx = left + offset / total * (size.width - left - right);
+      for (var my = top; my < size.height - bottom; my += 7) {
+        canvas.drawLine(
+          Offset(mx, my),
+          Offset(mx, min(my + 4, size.height - bottom)),
+          markPaint,
+        );
+      }
+      final label = _label(entry.label, color: mark);
+      final nearEnd = mx + 4 + label.width > size.width - right;
+      label.paint(canvas, Offset(nearEnd ? mx - 4 - label.width : mx + 4, top));
+    }
+
     final start = _label(_shortDate(points.first.day));
     start.paint(canvas, Offset(left, size.height - start.height));
     final end = _label(_shortDate(points.last.day));
@@ -143,10 +185,10 @@ class _ChartPainter extends CustomPainter {
   String _shortDate(String day) =>
       day.length >= 10 ? '${day.substring(8, 10)}.${day.substring(5, 7)}.' : day;
 
-  TextPainter _label(String value) => TextPainter(
+  TextPainter _label(String value, {Color? color}) => TextPainter(
     text: TextSpan(
       text: value,
-      style: TextStyle(color: text, fontSize: 11),
+      style: TextStyle(color: color ?? text, fontSize: 11),
     ),
     textDirection: TextDirection.ltr,
   )..layout();
@@ -154,6 +196,7 @@ class _ChartPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _ChartPainter oldDelegate) =>
       oldDelegate.points != points ||
+      oldDelegate.marks != marks ||
       oldDelegate.line != line ||
       oldDelegate.surface != surface;
 }

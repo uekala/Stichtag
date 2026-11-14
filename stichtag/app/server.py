@@ -22,7 +22,7 @@ WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "www")
 TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 DEV = os.environ.get("DEV") == "1"
 DEV_MOBILE = os.environ.get("DEV_MOBILE") == "1"
-VERSION = "1.3.1"
+VERSION = "1.4.0"
 PORT = int(os.environ.get("PORT", "8099"))
 MOBILE_PORT = int(os.environ.get("MOBILE_PORT", "8098"))
 PAIRING_TTL = 600
@@ -39,6 +39,9 @@ DEFAULT_SITES = [
     "Oberschenkel rechts", "Flanke links", "Flanke rechts",
 ]
 LISTS = ("protocols", "logs", "vials", "body")
+DEFAULT_TAGS = [
+    "Übelkeit", "Müdigkeit", "Kopfschmerzen", "Wenig Appetit", "Sodbrennen", "Rötung an der Stelle",
+]
 
 lock = threading.Lock()
 
@@ -48,6 +51,7 @@ def blank():
         "v": 1, "rev": 0, "demo": False,
         "protocols": [], "logs": [], "vials": [], "body": [],
         "sites": list(DEFAULT_SITES),
+        "tags": list(DEFAULT_TAGS),
         "settings": {"notify": "", "followup": 0},
     }
 

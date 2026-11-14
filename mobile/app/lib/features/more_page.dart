@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_lock.dart';
 import '../core/app_store.dart';
 import '../core/logic.dart';
 import 'vials_page.dart';
@@ -11,25 +12,29 @@ const appVersion = String.fromEnvironment(
 );
 
 class MorePage extends StatelessWidget {
-  const MorePage({super.key, required this.store});
+  const MorePage({super.key, required this.store, required this.appLock});
 
   final AppStore store;
+  final AppLock appLock;
 
-  Future<void> _editSites(BuildContext context) async {
-    final controller = TextEditingController(
-      text: sitesOf(store.state).join('\n'),
-    );
+  /// Bearbeitet eine Liste mit einem Eintrag pro Zeile.
+  Future<void> _editList(
+    BuildContext context, {
+    required String title,
+    required String key,
+    required List<String> current,
+    required String hint,
+  }) async {
+    final controller = TextEditingController(text: current.join('\n'));
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Injektionsstellen'),
+        title: Text(title),
         content: TextField(
           controller: controller,
           minLines: 5,
           maxLines: 10,
-          decoration: const InputDecoration(
-            helperText: 'Eine Stelle pro Zeile',
-          ),
+          decoration: InputDecoration(helperText: hint),
         ),
         actions: [
           TextButton(
@@ -50,7 +55,7 @@ class MorePage extends StatelessWidget {
         .toSet()
         .toList();
     if (saved == true) {
-      store.change((state) => state['sites'] = lines);
+      store.change((state) => state[key] = lines);
     }
   }
 
@@ -84,8 +89,29 @@ class MorePage extends StatelessWidget {
           title: const Text('Injektionsstellen'),
           subtitle: Text('${sitesOf(store.state).length} Stellen in Rotation'),
           enabled: store.loadedOnce,
-          onTap: () => _editSites(context),
+          onTap: () => _editList(
+            context,
+            title: 'Injektionsstellen',
+            key: 'sites',
+            current: sitesOf(store.state),
+            hint: 'Eine Stelle pro Zeile',
+          ),
         ),
+        ListTile(
+          leading: const Icon(Icons.sick_outlined),
+          title: const Text('Nebenwirkungen'),
+          subtitle: Text('${tagsOf(store.state).length} zum Ankreuzen'),
+          enabled: store.loadedOnce,
+          onTap: () => _editList(
+            context,
+            title: 'Nebenwirkungen',
+            key: 'tags',
+            current: tagsOf(store.state),
+            hint: 'Eine pro Zeile',
+          ),
+        ),
+        const Divider(),
+        _LockTile(lock: appLock),
         const Divider(),
         ListTile(
           leading: const Icon(Icons.dns_outlined),
@@ -113,6 +139,84 @@ class MorePage extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Schalter für die App-Sperre. Einschalten verlangt einmal das Entsperren,
+/// damit sich niemand mit einer nicht funktionierenden Sperre aussperrt.
+class _LockTile extends StatefulWidget {
+  const _LockTile({required this.lock});
+
+  final AppLock lock;
+
+  @override
+  State<_LockTile> createState() => _LockTileState();
+}
+
+class _LockTileState extends State<_LockTile> {
+  bool? _enabled;
+  bool _supported = false;
+  String? _hint;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final enabled = await widget.lock.enabled;
+    final supported = await widget.lock.supported;
+    if (!mounted) return;
+    setState(() {
+      _enabled = enabled;
+      _supported = supported;
+    });
+  }
+
+  Future<void> _toggle(bool value) async {
+    if (value) {
+      final ok = await widget.lock.unlock('App-Sperre einschalten');
+      if (!ok) {
+        if (mounted) {
+          setState(() => _hint = 'Die Sperre wurde nicht eingeschaltet.');
+        }
+        return;
+      }
+    }
+    try {
+      await widget.lock.setEnabled(value);
+    } on Object {
+      if (mounted) {
+        setState(() => _hint = 'Die Einstellung ließ sich nicht speichern.');
+      }
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _enabled = value;
+        _hint = null;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = _enabled;
+    final subtitle =
+        _hint ??
+        (enabled == null
+            ? ''
+            : _supported
+            ? 'Fingerabdruck, Gesicht oder Geräte-PIN beim Öffnen'
+            : 'Dafür braucht das Handy eine Bildschirmsperre');
+    return SwitchListTile(
+      secondary: const Icon(Icons.lock_outline),
+      title: const Text('App-Sperre'),
+      subtitle: Text(subtitle),
+      value: enabled ?? false,
+      onChanged: enabled == null || !_supported ? null : _toggle,
     );
   }
 }

@@ -1,5 +1,11 @@
 # Änderungen der Handy-App
 
+## 1.3.0
+
+- App-Sperre: unter Mehr einschaltbar, fragt beim Öffnen nach Fingerabdruck, Gesicht oder Geräte-PIN.
+- Nebenwirkungen: beim Eintragen aus einer eigenen Liste ankreuzen; die Auswertung zählt sie.
+- Körper: Die Kurve zeigt als gestrichelte Linien, ab wann eine andere Dosis eingetragen wurde.
+
 ## 1.2.1
 
 - Dosen werden nur noch in mg eingegeben; die Auswahl der Einheit entfällt. Alte Einträge in mcg rechnet das Formular beim Bearbeiten um.

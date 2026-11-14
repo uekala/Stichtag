@@ -26,6 +26,7 @@ class TodayPage extends StatelessWidget {
         'feel': 0,
         'note': '',
         'vialId': str(protocol['vialId']),
+        'tags': <String>[],
       });
     });
     ScaffoldMessenger.of(context)

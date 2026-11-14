@@ -24,6 +24,9 @@ class BodyPage extends StatefulWidget {
 class _BodyPageState extends State<BodyPage> {
   String _metric = 'weight';
 
+  /// null: das am häufigsten eingetragene Peptid; leer: keine Markierungen.
+  String? _markName;
+
   Future<void> _delete(String id) async {
     final ok = await confirm(context, 'Diese Messung löschen?');
     if (!ok) return;
@@ -44,6 +47,14 @@ class _BodyPageState extends State<BodyPage> {
         if (toDouble(entry[_metric]) > 0 &&
             tryParseYmd(str(entry['date'])) != null)
           ChartPoint(str(entry['date']), toDouble(entry[_metric])),
+    ];
+    final names = namesByUse(widget.store.state);
+    var markName = _markName ?? (names.isEmpty ? '' : names.first);
+    if (!names.contains(markName)) markName = '';
+    final marks = [
+      if (markName.isNotEmpty)
+        for (final change in doseChanges(widget.store.state, markName))
+          ChartMark(change.key, change.value),
     ];
     final last = points.isEmpty ? null : points.last;
     final diff = points.length > 1 ? points.last.value - points.first.value : 0;
@@ -88,9 +99,37 @@ class _BodyPageState extends State<BodyPage> {
           margin: EdgeInsets.zero,
           child: Padding(
             padding: const EdgeInsets.all(14),
-            child: LineChart(
-              points: points,
-              emptyText: 'Ab zwei Messwerten erscheint hier die Kurve.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (names.isNotEmpty) ...[
+                  KeyedSubtree(
+                    key: ValueKey<String>('mark-$markName-${names.join('|')}'),
+                    child: dropdown<String>(
+                      label: 'Dosis einblenden',
+                      value: markName,
+                      options: <String, String>{
+                        '': 'Keine',
+                        for (final name in names) name: name,
+                      },
+                      onChanged: (value) => setState(() => _markName = value),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                LineChart(
+                  points: points,
+                  marks: marks,
+                  emptyText: 'Ab zwei Messwerten erscheint hier die Kurve.',
+                ),
+                if (markName.isNotEmpty && points.length > 1) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Gestrichelte Linien zeigen, ab wann eine andere Dosis von $markName eingetragen wurde.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ],
             ),
           ),
         ),

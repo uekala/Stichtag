@@ -256,6 +256,29 @@ void main() {
     expect(vialDaysLeft(<String, dynamic>{'mixed': '2026-10-10'}, '2026-11-08'), isNull);
   });
 
+  test('Nebenwirkungen und Dosiswechsel', () {
+    final state = normalizeState(<String, dynamic>{
+      'tags': ['Übelkeit'],
+      'logs': [
+        {'ts': '2026-10-02T20:00', 'name': 'Reta', 'dose': 2000, 'unit': 'mcg'},
+        {'ts': '2026-10-09T20:00', 'name': 'Reta', 'dose': 2, 'unit': 'mg', 'tags': ['Übelkeit']},
+        {'ts': '2026-10-16T20:00', 'name': 'Reta', 'dose': 4, 'unit': 'mg', 'tags': ['Übelkeit', 'Müdigkeit']},
+        {'ts': '2026-11-06T20:00', 'name': 'Reta', 'dose': 6, 'unit': 'mg', 'tags': ['Müdigkeit']},
+        {'ts': '2026-11-07T08:00', 'name': 'Anderes', 'dose': 1, 'unit': 'mg'},
+      ],
+    });
+    expect(tagsOf(state), ['Übelkeit']);
+    expect(logTags(items(state, 'logs')[2]), ['Übelkeit', 'Müdigkeit']);
+    final counts = tagCounts(state, '2026-11-13');
+    expect(counts.map((e) => '${e.key} ${e.value}'), ['Müdigkeit 2', 'Übelkeit 1']);
+    expect(namesByUse(state), ['Reta', 'Anderes']);
+    expect(
+      doseChanges(state, 'Reta').map((e) => '${e.key} ${e.value}'),
+      ['2026-10-02 2 mg', '2026-10-16 4 mg', '2026-11-06 6 mg'],
+    );
+    expect(tagsOf(normalizeState(<String, dynamic>{})), defaultTags);
+  });
+
   test('normalizeState füllt fehlende Teile auf', () {
     final state = normalizeState(<String, dynamic>{'rev': 7});
     expect(state['rev'], 7);

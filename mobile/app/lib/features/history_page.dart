@@ -72,6 +72,7 @@ class _HistoryPageState extends State<HistoryPage> {
         if (stamp.length >= 16) '${stamp.substring(11, 16)} Uhr',
         if (site.isNotEmpty) site,
         if (feel > 0) 'Befinden $feel/5',
+        ...logTags(log),
         if (note.isNotEmpty) note,
       ].join(' · ');
       children.add(

@@ -30,6 +30,9 @@ info["CFBundleDisplayName"] = "Stichtag"
 info["NSCameraUsageDescription"] = (
     "Stichtag verwendet die Kamera, um den einmaligen Kopplungscode zu scannen."
 )
+info["NSFaceIDUsageDescription"] = (
+    "Stichtag verwendet Face ID, um die App zu entsperren."
+)
 with info_path.open("wb") as target:
     plistlib.dump(info, target, fmt=plistlib.FMT_XML, sort_keys=False)
 
@@ -109,6 +112,19 @@ resource_dir.mkdir(parents=True, exist_ok=True)
 PY
 
 python3 "$(dirname "${BASH_SOURCE[0]}")/configure-android-manifest.py"
+python3 "$(dirname "${BASH_SOURCE[0]}")/configure-android-app-lock.py"
+
+# iOS-Symbol: Die Vorlage wird auf jede Größe gebracht, die das Projekt erwartet.
+# sips gibt es nur auf macOS; auf anderen Systemen bleibt das Standard-Symbol.
+ICON_MASTER="$(dirname "${BASH_SOURCE[0]}")/app-icon-1024.png"
+ICON_SET="ios/Runner/Assets.xcassets/AppIcon.appiconset"
+if command -v sips >/dev/null 2>&1 && [[ -d "$ICON_SET" ]]; then
+  for icon in "$ICON_SET"/*.png; do
+    size="$(sips -g pixelWidth "$icon" | awk '/pixelWidth/ {print $2}')"
+    sips -z "$size" "$size" "$ICON_MASTER" --out "$icon" >/dev/null
+  done
+  echo "iOS: App-Symbol in $(ls "$ICON_SET"/*.png | wc -l | tr -d ' ') Größen erzeugt."
+fi
 
 echo "Android- und iOS-Projektdateien wurden erstellt."
 echo "Nächster Schritt: flutter pub get && flutter test"
